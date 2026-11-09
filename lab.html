@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NAVUMSHA Lab – Projectile Motion Simulator</title>
+<meta name="description" content="Launch projectiles, change gravity, air, wind and spin, and see exactly why they land where they do.">
+<meta name="theme-color" content="#050b24">
+<!--
+  NAVUMSHA – the Lab (lab.html)
+  Needs physics.js in the same folder (the physics engine: RK4 integration, drag, wind, Magnus force).
+  Three.js (CDN) is used only for the optional 3D view. Everything else is plain HTML, CSS and JavaScript.
+-->
+<style>
+:root{
+  --royal:#4169E1; --royal-d:#2f4fc0; --navy9:#030717; --navy8:#050b24; --navy7:#0a1440; --navy6:#101d5c;
+  --sky:#87CEEB; --white:#fff; --glass:rgba(10,20,64,.78); --edge:rgba(135,206,235,.30); --ok:#5ee6a0; --warn:#ffb86b;
+  --scale:1;
+}
+*{box-sizing:border-box}
+html{font-size:calc(16px * var(--scale));-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--white);font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;line-height:1.5;
+  background:radial-gradient(120% 90% at 50% 120%,#13296f 0%,#0a1440 45%,#030717 100%) fixed;min-height:100vh}
+a{color:var(--sky)}
+:focus-visible{outline:3px solid var(--sky);outline-offset:2px;border-radius:6px}
+button{font:inherit;color:var(--white);cursor:pointer}
+.skip{position:absolute;left:-999px;top:0;background:#fff;color:var(--navy8);padding:.6rem 1rem;z-index:300}
+.skip:focus{left:0}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+[hidden]{display:none!important}
+
+/* top bar */
+.lbar{position:sticky;top:0;z-index:60;display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;padding:.5rem .8rem;
+  background:rgba(5,11,36,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--edge)}
+html.lowpower .lbar{backdrop-filter:none;background:var(--navy8)}
+.brand{font-weight:800;letter-spacing:.2em;color:#fff;text-decoration:none;text-shadow:0 0 18px rgba(135,206,235,.6)}
+.lbar .sp{flex:1}
+.chip{background:var(--navy6);border:1px solid var(--edge);border-radius:999px;padding:.35rem .8rem;font-size:.9rem}
+.chip[aria-pressed="true"],.chip.on{background:var(--royal);border-color:#fff}
+.a11y{position:absolute;right:.8rem;top:100%;margin-top:.3rem;display:none;gap:.5rem;flex-wrap:wrap;padding:.7rem;background:var(--navy7);border:1px solid var(--edge);border-radius:12px;max-width:min(94vw,420px)}
+.a11y.open{display:flex}
+
+/* layout */
+.lab{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:12px;padding:12px;align-items:start}
+.lab.collapsed{grid-template-columns:minmax(0,1fr)}
+.lab.collapsed .panel{display:none}
+.glass{background:var(--glass);border:1px solid var(--edge);border-radius:16px;backdrop-filter:blur(12px);box-shadow:0 10px 30px rgba(0,0,0,.35)}
+html.lowpower .glass{backdrop-filter:none;background:var(--navy7)}
+.stage{min-width:0}
+.tabs{display:flex;gap:.35rem;overflow-x:auto;padding:.4rem;margin-bottom:.5rem}
+.tab{flex:none;background:var(--navy6);border:1px solid var(--edge);border-radius:10px;padding:.45rem .75rem;font-size:.92rem;white-space:nowrap}
+.tab[aria-selected="true"]{background:var(--royal);border-color:#fff;font-weight:700}
+.modeDesc{margin:.1rem .2rem .6rem;color:#dbeaff;font-size:.95rem}
+.canvaswrap{position:relative;height:clamp(300px,62vh,780px);border-radius:16px;overflow:hidden;border:1px solid var(--edge);background:#0a1440}
+.canvaswrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#c3d{touch-action:none;cursor:grab}
+#handle{position:absolute;left:0;top:0;width:56px;height:56px;border-radius:50%;touch-action:none;cursor:grab;
+  border:2px dashed rgba(255,255,255,.65);background:rgba(135,206,235,.12)}
+#handle:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.hud{position:absolute;left:8px;top:8px;display:flex;gap:6px;flex-wrap:wrap;z-index:5;max-width:92%}
+.hud .chip{background:rgba(5,11,36,.8);font-size:.82rem;padding:.2rem .6rem}
+#toast{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:20;background:#fff;color:var(--navy8);padding:.5rem 1rem;border-radius:10px;font-weight:600;max-width:92%;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s}
+#toast.show{opacity:1}
+.toolbar{display:flex;flex-wrap:wrap;gap:.45rem;margin:.6rem 0}
+.tb{background:var(--navy6);border:1px solid var(--edge);border-radius:10px;padding:.55rem .9rem;font-weight:600}
+.tb:hover{border-color:var(--sky)}
+.tb[aria-pressed="true"]{background:var(--royal);border-color:#fff}
+.tb.primary{background:var(--royal);border-color:#fff;box-shadow:0 0 18px rgba(65,105,225,.7)}
+.tb:disabled{opacity:.5;cursor:not-allowed}
+.legend{display:flex;flex-wrap:wrap;gap:.9rem;font-size:.85rem;color:#dbeaff;margin:.2rem .3rem .6rem}
+.sw{display:inline-block;width:1.4rem;height:0;border-top:3px solid;vertical-align:middle;margin-right:.3rem}
+.info{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.card{padding:.9rem 1rem}
+.card h2{margin:0 0 .5rem;font-size:1.05rem;color:var(--sky)}
+dl.live{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.35rem .8rem;margin:0}
+dl.live div{display:flex;flex-direction:column}
+dl.live dt{font-size:.78rem;color:#bcd6f2}
+dl.live dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+dl.res{display:grid;grid-template-columns:auto 1fr;gap:.25rem .8rem;margin:0}
+dl.res dt{color:#bcd6f2} dl.res dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+canvas.graph{width:100%;height:150px;display:block;border-radius:10px;background:rgba(3,7,23,.6);border:1px solid var(--edge)}
+.tick{color:var(--ok);font-weight:800;font-size:1.1rem}
+.bad{color:var(--warn);font-weight:800}
+table.vc{width:100%;border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
+table.vc th,table.vc td{text-align:right;padding:.15rem .3rem;border-bottom:1px solid rgba(135,206,235,.15)}
+table.vc th:first-child,table.vc td:first-child{text-align:left}
+.badges{display:flex;flex-wrap:wrap;gap:.4rem}
+.badge{border:1px solid var(--edge);border-radius:999px;padding:.25rem .7rem;font-size:.85rem;background:var(--navy6)}
+.badge.got{background:var(--royal);border-color:#fff}
+.badge.lock{opacity:.7}
+
+/* control panel */
+.panel{position:sticky;top:56px;max-height:calc(100vh - 68px);overflow:auto}
+.phead{display:flex;align-items:center;gap:.5rem;padding:.6rem .8rem;position:sticky;top:0;background:var(--navy7);z-index:2;border-bottom:1px solid var(--edge);border-radius:16px 16px 0 0}
+.phead h2{margin:0;font-size:1.05rem;flex:1}
+fieldset.grp{border:1px solid var(--edge);border-radius:12px;margin:.6rem .7rem;padding:.4rem .7rem .7rem}
+fieldset.grp legend{padding:0 .4rem;color:var(--sky);font-weight:700}
+.ctl{margin:.55rem 0}
+.ctl label{display:block;font-size:.9rem}
+.ctl .unit{color:#bcd6f2}
+.ctl .row{display:flex;gap:.5rem;align-items:center}
+.ctl input[type=range]{flex:1;min-width:0;accent-color:var(--sky);height:1.6rem}
+.ctl input[type=number]{width:5.6rem;background:var(--navy8);color:#fff;border:1px solid var(--sky);border-radius:8px;padding:.3rem .4rem;font:inherit}
+.ctl.dim{opacity:.55}
+.pills{display:flex;flex-wrap:wrap;gap:.35rem;margin:.3rem 0}
+.pill{background:var(--navy6);border:1px solid var(--edge);border-radius:999px;padding:.3rem .7rem;font-size:.88rem}
+.pill[aria-pressed="true"]{background:var(--royal);border-color:#fff;font-weight:700}
+.chk{display:flex;gap:.5rem;align-items:center;margin:.35rem 0;font-size:.92rem}
+.chk input{width:1.15rem;height:1.15rem;accent-color:var(--sky)}
+.hint{font-size:.84rem;color:#bcd6f2;margin:.2rem 0}
+
+/* learn drawer */
+.learn{position:fixed;top:0;right:0;bottom:0;width:min(440px,100vw);z-index:200;background:var(--navy8);border-left:1px solid var(--edge);overflow:auto;padding:1rem 1.1rem 3rem;transform:translateX(105%);transition:transform .3s;box-shadow:-10px 0 40px rgba(0,0,0,.5)}
+.learn.open{transform:none}
+.learn h2{margin-top:0}
+.learn details{border:1px solid var(--edge);border-radius:12px;margin:.5rem 0;padding:.4rem .8rem;background:var(--navy7)}
+.learn summary{cursor:pointer;font-weight:700;padding:.3rem 0}
+.learn p{margin:.4rem 0}
+.rotate{display:none;position:fixed;left:8px;right:8px;bottom:64px;z-index:90;background:#fff;color:var(--navy8);border-radius:12px;padding:.6rem .8rem;font-weight:600}
+.rotate button{margin-left:.6rem;background:var(--navy8);border-radius:8px;padding:.2rem .6rem}
+
+@media (max-width:900px){
+  .lab{grid-template-columns:1fr;padding-bottom:80px}
+  .panel{position:fixed;left:0;right:0;bottom:0;top:auto;max-height:62vh;z-index:80;border-radius:16px 16px 0 0;transform:translateY(calc(100% - 52px));transition:transform .3s}
+  .panel.open{transform:none}
+  .lab.collapsed .panel{display:block}
+  .canvaswrap{height:clamp(260px,50vh,520px)}
+}
+@media (max-width:700px) and (orientation:portrait){.rotate.show{display:block}}
+html.reduce *{transition:none!important;animation:none!important}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#sim-area">Skip to the simulator</a>
+
+<header class="lbar">
+  <a class="brand" href="index.html" aria-label="NAVUMSHA home page">NAVUMSHA</a>
+  <span class="chip">Projectile Lab</span>
+  <span class="sp"></span>
+  <button class="chip" id="bLearn" aria-expanded="false" aria-controls="learn">Learn</button>
+  <button class="chip" id="bMute" aria-pressed="false">Sound on</button>
+  <button class="chip" id="bA11y" aria-expanded="false" aria-controls="a11y">Accessibility</button>
+  <div class="a11y" id="a11y" role="group" aria-label="Accessibility settings">
+    <button class="chip" id="tSmall" aria-label="Make text smaller">A−</button>
+    <button class="chip" id="tBig" aria-label="Make text larger">A+</button>
+    <button class="chip" id="tMotion" aria-pressed="false">Reduce motion</button>
+    <button class="chip" id="tLow" aria-pressed="false">Low-power mode</button>
+  </div>
+</header>
+
+<noscript><p style="padding:1rem">This lab needs JavaScript. Please turn it on in your browser.</p></noscript>
+<p id="fatal" hidden style="padding:1rem;background:#fff;color:#050b24;margin:1rem;border-radius:10px"><strong>physics.js was not found.</strong> Keep lab.html and physics.js in the same folder, then reload this page.</p>
+
+<main class="lab" id="lab">
+  <section class="stage" id="sim-area" aria-label="Simulation">
+    <div class="tabs glass" role="tablist" aria-label="Projectile modes" id="tabs"></div>
+    <p class="modeDesc" id="modeDesc"></p>
+
+    <div class="canvaswrap">
+      <canvas id="sim" role="img" aria-label="Simulation canvas"></canvas>
+      <canvas id="c3d" hidden tabindex="0" role="img" aria-label="3D view of the flight. Drag to rotate, scroll to zoom, or use the arrow keys."></canvas>
+      <div id="handle" role="slider" tabindex="0" aria-label="Cannon angle. Drag or use the arrow keys" aria-valuemin="0" aria-valuemax="90" aria-valuenow="45" aria-valuetext="45 degrees"></div>
+      <div class="hud" id="badgeHud" aria-label="Achievement badges"></div>
+      <div id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <div class="toolbar" role="toolbar" aria-label="Simulation buttons">
+      <button class="tb primary" id="bLaunch">Launch</button>
+      <button class="tb" id="bPause">Pause</button>
+      <button class="tb" id="bStep" title="Move forward by 0.05 seconds">Step</button>
+      <button class="tb" id="bReset">Reset</button>
+      <button class="tb" id="bSlow" aria-pressed="false">Slow-motion</button>
+      <button class="tb" id="bClear">Clear trails</button>
+      <button class="tb" id="bGhost" aria-pressed="false" title="Pins the last shot as a dashed ghost path to compare with new shots">Ghost trail</button>
+      <button class="tb" id="bBest">Find best angle</button>
+      <button class="tb" id="bView" aria-pressed="false">3D view</button>
+      <button class="tb" id="bTarget" aria-pressed="false">Target practice</button>
+      <button class="tb" id="bNewT" hidden>New target</button>
+      <button class="tb" id="bSave">Save my shot</button>
+      <button class="tb" id="bPanel" aria-expanded="true" aria-controls="panel">Controls</button>
+    </div>
+    <p class="hint" id="scoreLine" hidden aria-live="polite"></p>
+    <div class="legend" aria-label="Arrow guide">
+      <span><i class="sw" style="border-color:#87CEEB"></i>v velocity</span>
+      <span><i class="sw" style="border-color:#fff;border-top-style:dashed"></i>vx, vy components</span>
+      <span><i class="sw" style="border-color:#ffb86b"></i>g weight (50 px = weight)</span>
+      <span><i class="sw" style="border-color:#ff7a96"></i>Fd drag</span>
+      <span><i class="sw" style="border-color:#c9a9ff"></i>Fm Magnus</span>
+    </div>
+
+    <div class="info">
+      <section class="glass card" aria-labelledby="hLive">
+        <h2 id="hLive">Live display</h2>
+        <dl class="live">
+          <div><dt>x (distance)</dt><dd id="lx">0 m</dd></div>
+          <div><dt>y (height)</dt><dd id="ly">0 m</dd></div>
+          <div><dt>z (sideways)</dt><dd id="lz">0 m</dd></div>
+          <div><dt>vx</dt><dd id="lvx">0 m/s</dd></div>
+          <div><dt>vy</dt><dd id="lvy">0 m/s</dd></div>
+          <div><dt>speed</dt><dd id="lsp">0 m/s</dd></div>
+          <div><dt>time</dt><dd id="lt">0 s</dd></div>
+          <div><dt>kinetic energy</dt><dd id="lke">0 J</dd></div>
+          <div><dt>potential energy</dt><dd id="lpe">0 J</dd></div>
+          <div><dt>total energy</dt><dd id="lte">0 J</dd></div>
+        </dl>
+        <p class="hint">Potential energy = m·g·y, measured from y = 0.</p>
+      </section>
+
+      <section class="glass card" aria-labelledby="hRes">
+        <h2 id="hRes">Result</h2>
+        <p class="hint" id="rEmpty">Launch a shot to see the result.</p>
+        <dl class="res" id="rBox" aria-live="polite" hidden>
+          <dt>Range (x)</dt><dd id="rRange"></dd>
+          <dt>Max height</dt><dd id="rH"></dd>
+          <dt>Time of flight</dt><dd id="rT"></dd>
+          <dt>Impact speed</dt><dd id="rV"></dd>
+          <dt>Impact angle</dt><dd id="rA"></dd>
+          <dt id="rDt" hidden>Sideways drift (z)</dt><dd id="rD" hidden></dd>
+        </dl>
+        <p class="hint" id="rNote"></p>
+        <p class="hint" id="rCmp"></p>
+      </section>
+
+      <section class="glass card" aria-labelledby="hWhy">
+        <h2 id="hWhy">Why did this happen?</h2>
+        <p id="why" aria-live="polite"></p>
+        <p class="hint" id="opt"></p>
+      </section>
+
+      <section class="glass card" aria-labelledby="hG1">
+        <h2 id="hG1">Velocity against time</h2>
+        <canvas class="graph" id="g1" role="img" aria-label="Graph of speed, horizontal velocity and vertical velocity against time"></canvas>
+      </section>
+      <section class="glass card" aria-labelledby="hG2">
+        <h2 id="hG2">Height against time</h2>
+        <canvas class="graph" id="g2" role="img" aria-label="Graph of height against time"></canvas>
+      </section>
+
+      <section class="glass card" aria-labelledby="hVC">
+        <h2 id="hVC">Vacuum check <span id="vcTick" class="tick" aria-hidden="true"></span></h2>
+        <p class="hint" id="vcText"></p>
+        <table class="vc" id="vcTable"><thead><tr><th>Quantity</th><th>Formula</th><th>Simulation</th></tr></thead><tbody></tbody></table>
+        <p class="hint" id="selfTest"></p>
+      </section>
+
+      <section class="glass card" aria-labelledby="hBadge">
+        <h2 id="hBadge">Achievements</h2>
+        <div class="badges" id="badgeList"></div>
+      </section>
+    </div>
+  </section>
+
+  <aside class="glass panel" id="panel" aria-label="Controls">
+    <div class="phead"><h2>Controls</h2><button class="chip" id="bDefaults">Reset values</button></div>
+    <fieldset class="grp" id="g-Launch"><legend>Launch</legend></fieldset>
+    <fieldset class="grp" id="g-Object"><legend>Object</legend>
+      <div class="pills" id="objPills" role="group" aria-label="Object presets"></div>
+    </fieldset>
+    <fieldset class="grp" id="g-Air"><legend>Air and wind</legend>
+      <label class="chk"><input type="checkbox" id="cAir"> Air resistance on</label>
+      <label class="chk"><input type="checkbox" id="cAlt"> Air gets thinner with height</label>
+      <p class="hint" id="airNote"></p>
+      <div class="pills" role="group" aria-label="Wind direction shortcuts">
+        <button class="pill" data-wd="0">Tailwind (0°)</button>
+        <button class="pill" data-wd="180">Headwind (180°)</button>
+        <button class="pill" data-wd="90">Crosswind (90°)</button>
+      </div>
+      <p class="hint">Wind direction: 0° pushes along the flight (+x), 180° pushes against it, 90° pushes sideways (+z).</p>
+    </fieldset>
+    <fieldset class="grp" id="g-Spin"><legend>Spin</legend>
+      <p class="hint">Backspin (+) gives lift, topspin (−) pushes down, sidespin curves the path. Spin needs air.</p>
+    </fieldset>
+    <fieldset class="grp" id="g-World"><legend>World</legend>
+      <div class="pills" id="gravPills" role="group" aria-label="Gravity presets"></div>
+      <label class="chk" id="nightRow"><input type="checkbox" id="cNight"> Night sky (Earth)</label>
+    </fieldset>
+    <fieldset class="grp"><legend>Arrows to show</legend>
+      <label class="chk"><input type="checkbox" data-vec="v" checked> Velocity (v)</label>
+      <label class="chk"><input type="checkbox" data-vec="comp"> Components (vx, vy)</label>
+      <label class="chk"><input type="checkbox" data-vec="g"> Gravity / weight (g)</label>
+      <label class="chk"><input type="checkbox" data-vec="drag" checked> Drag force (Fd)</label>
+      <label class="chk"><input type="checkbox" data-vec="magnus" checked> Magnus force (Fm)</label>
+    </fieldset>
+    <fieldset class="grp"><legend>Landing level</legend>
+      <p class="hint">The landing level is the height of the surface the object lands on (0 m = the ground). Make it higher or lower to explore mode 4.</p>
+    </fieldset>
+  </aside>
+</main>
+
+<div class="rotate" id="rotate" role="note">Tip: turn your phone sideways for a wider view. <button id="rotX">Got it</button></div>
+
+<aside class="learn" id="learn" aria-labelledby="learnH" tabindex="-1">
+  <button class="chip" id="learnX" style="float:right">Close</button>
+  <h2 id="learnH">Learn: how things fly</h2>
+  <p>Every flying object is pulled down by gravity. Everything else (air, wind, spin) is a bonus effect. Tap a topic to open it.</p>
+
+  <details open><summary>1. The basic idea (no air)</summary>
+    <p>Sideways motion and up-and-down motion are separate. Sideways speed stays the same. Gravity changes the up-and-down speed by g every second. The path is a parabola: x = v·cosθ·t and y = h + v·sinθ·t − ½·g·t².</p>
+    <p>On level ground the range is R = v²·sin(2θ)/g. <strong>Examples:</strong> the arc of a water fountain jet, or a stone skimmed off a pier.</p></details>
+
+  <details><summary>2. Horizontal launch from a cliff</summary>
+    <p>With no air, the fall time depends only on the height: t = √(2h/g). Throwing harder only carries it farther, not longer. <strong>Examples:</strong> a ball rolling off a table, water leaving a horizontal pipe, a cannon firing level from a castle wall.</p></details>
+
+  <details><summary>3. Launch height changes the best angle</summary>
+    <p>Launch from higher than the landing level and the best angle drops below 45°: θ = arctan(v / √(v² + 2·g·h)). <strong>Examples:</strong> in shot put the shot leaves the hand about 2 m above the ground, so the ideal angle is below 45°; athletes often use around 35–40°. A javelin is also thrown low (roughly 30–35°) and its shape adds lift and drag.</p></details>
+
+  <details><summary>4. Landing higher or lower</summary>
+    <p>Landing on a higher level needs a steeper launch, more than 45°. Landing lower needs less. <strong>Examples:</strong> a basketball free throw is released below the hoop, so a steep arc works best; a ball kicked off a hill lands far below the kicker.</p></details>
+
+  <details><summary>5. Air resistance (drag)</summary>
+    <p>Drag pushes against the motion. Its size is ½·ρ·Cd·A·v², so doubling the speed makes drag four times bigger. Light, wide objects feel drag most. The path becomes steeper on the way down and the range gets shorter. <strong>Examples:</strong> a cricket ball and a football slow down noticeably; a golf ball has dimples that cut drag; a feather barely travels at all. Cannonballs are heavy, so drag matters less, but real ranges are still shorter than the vacuum formula says.</p></details>
+
+  <details><summary>6. Wind</summary>
+    <p>Drag depends on the speed of the object <em>through the air</em>, so we use the velocity of the object minus the velocity of the wind. A tailwind helps, a headwind hurts and a crosswind pushes the object sideways. <strong>Examples:</strong> golfers and javelin throwers check the wind before every shot.</p></details>
+
+  <details><summary>7. Spin and the Magnus effect</summary>
+    <p>A spinning ball drags air around with it. The air is pushed to one side, so the ball is pushed the other way. Backspin gives lift, topspin pushes the ball down and sidespin curves it. <strong>Examples:</strong> a golf driver sends the ball up at a low launch angle (roughly 10–15°) because backspin keeps it airborne, a tennis topspin shot dips quickly, and a curling free kick bends round a wall.</p>
+    <p>In this lab the lift coefficient is estimated as C<sub>L</sub> = S / (1 + 2S), where S = r·ω / v. Real balls differ with surface, seams and speed, so treat it as a good teaching model, not an exact match.</p></details>
+
+  <details><summary>8. Altitude</summary>
+    <p>Air gets thinner as you go up (roughly halving every 6 km). Less air means less drag, so objects fly farther at high places. <strong>Example:</strong> golf balls travel farther on mountain courses. Switch on “Air gets thinner with height” to see this.</p></details>
+
+  <details><summary>9. Gravity on other worlds</summary>
+    <p>For the same launch, range is proportional to 1 / g. The Moon (1.62 m/s²) is about six times weaker than Earth, so a shot goes about six times farther in a vacuum. <strong>Example:</strong> astronaut Alan Shepard hit golf balls on the Moon during Apollo 14. Jupiter has no solid ground, so the lab treats it as a platform at its cloud level.</p></details>
+
+  <details><summary>10. Space launches</summary>
+    <p>A rocket is not a simple projectile while its engine is firing. After the engine stops, a spacecraft follows a path set by gravity, just like a thrown ball. An orbit is a throw so fast that the ground curves away as fast as the object falls. This lab uses flat ground and constant gravity, so it does not model orbits.</p></details>
+
+  <details><summary>What this lab leaves out</summary>
+    <p>Flat ground, steady wind, no buoyancy (so a very light balloon does not float up), and spin that does not slow down. These keep the physics clear and correct for what is modelled.</p></details>
+  <p><a href="index.html">Back to the NAVUMSHA home page</a></p>
+</aside>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="physics.js"></script>
+<script>
+(function () {
+'use strict';
+var P = window.NavPhysics;
+function $(s, r) { return (r || document).querySelector(s); }
+function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+if (!P) { $('#fatal').hidden = false; return; }
+
+/* =========================================================
+   0. PREFERENCES (shared with the landing page)
+   ========================================================= */
+var root = document.documentElement;
+var store = {
+  get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
+};
+var mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+var reduce = store.get('nav-reduce') === null ? mq.matches : store.get('nav-reduce') === '1';
+var slowDev = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) || (navigator.deviceMemory && navigator.deviceMemory <= 2);
+var low = store.get('nav-low') === null ? !!slowDev : store.get('nav-low') === '1';
+var muted = store.get('nav-mute') === '1';
+var SCALES = [0.9, 1, 1.15, 1.3, 1.5];
+var scaleIdx = parseInt(store.get('nav-text'), 10);
+if (!(scaleIdx >= 0 && scaleIdx < SCALES.length)) scaleIdx = 1;
+
+/* =========================================================
+   1. DATA: controls, presets, modes
+   ========================================================= */
+var CONTROLS = [
+  { id: 'v0', label: 'Launch speed', unit: 'm/s', min: 0, max: 200, step: 0.1, def: 30, group: 'Launch' },
+  { id: 'angle', label: 'Launch angle', unit: '°', min: 0, max: 90, step: 0.1, def: 45, group: 'Launch' },
+  { id: 'h0', label: 'Launch height', unit: 'm', min: 0, max: 500, step: 0.1, def: 0, group: 'Launch' },
+  { id: 'ly', label: 'Landing level height', unit: 'm', min: -100, max: 200, step: 0.1, def: 0, group: 'Launch' },
+  { id: 'mass', label: 'Mass', unit: 'kg', min: 0.001, max: 200, step: 0.001, def: 0.43, group: 'Object' },
+  { id: 'radius', label: 'Object radius', unit: 'm', min: 0.005, max: 0.5, step: 0.001, def: 0.11, group: 'Object' },
+  { id: 'cd', label: 'Drag coefficient Cd', unit: 'no unit', min: 0, max: 2, step: 0.01, def: 0.25, group: 'Air', air: true },
+  { id: 'rho', label: 'Air density', unit: 'kg/m³', min: 0, max: 100, step: 0.005, def: 1.225, group: 'Air', air: true },
+  { id: 'windSpeed', label: 'Wind speed', unit: 'm/s', min: 0, max: 50, step: 0.1, def: 0, group: 'Air', air: true },
+  { id: 'windDir', label: 'Wind direction', unit: '°', min: 0, max: 360, step: 1, def: 0, group: 'Air', air: true },
+  { id: 'backspin', label: 'Backspin (+) / Topspin (−)', unit: 'rpm', min: -6000, max: 6000, step: 10, def: 0, group: 'Spin', air: true },
+  { id: 'sidespin', label: 'Sidespin', unit: 'rpm', min: -6000, max: 6000, step: 10, def: 0, group: 'Spin', air: true },
+  { id: 'g', label: 'Gravity', unit: 'm/s²', min: 0.1, max: 30, step: 0.01, def: 9.81, group: 'World' },
+  { id: 'timeScale', label: 'Time scale', unit: '×', min: 0.05, max: 10, step: 0.05, def: 1, group: 'World' }
+];
+var CTL = {}; CONTROLS.forEach(function (c) { CTL[c.id] = c; });
+
+var PLANETS = {
+  Earth: { g: 9.81, rho: 1.225 }, Moon: { g: 1.62, rho: 0 }, Mars: { g: 3.71, rho: 0.020 },
+  Venus: { g: 8.87, rho: 65 }, Jupiter: { g: 24.79, rho: 0.16 }
+};
+var SKY = {
+  Earth: { day: ['#2f63e0', '#6fb0ee', '#cfeeff'], night: ['#030717', '#0a1440', '#1a2f7a'], ground: '#1d4f91', stars: false },
+  Moon: { day: ['#000000', '#05060d', '#10142a'], ground: '#6b7280', stars: true },
+  Mars: { day: ['#7a3b24', '#c06a43', '#f0b27a'], ground: '#9a4a2b', stars: false },
+  Venus: { day: ['#5a3a10', '#b88a35', '#f0cf7a'], ground: '#8a6a2a', stars: false },
+  Jupiter: { day: ['#6b3a1c', '#b9733a', '#e8c595'], ground: '#a35f2c', stars: false }
+};
+var OBJECTS = {
+  'Football': { mass: 0.43, radius: 0.11, cd: 0.25 },
+  'Cricket ball': { mass: 0.16, radius: 0.036, cd: 0.4 },
+  'Golf ball': { mass: 0.0459, radius: 0.02135, cd: 0.25 },
+  'Shot put': { mass: 7.26, radius: 0.06, cd: 0.47 },
+  'Cannonball': { mass: 6.5, radius: 0.06, cd: 0.47 },
+  'Ping-pong ball': { mass: 0.0027, radius: 0.02, cd: 0.47 },
+  'Feather-light balloon': { mass: 0.003, radius: 0.15, cd: 0.47 }
+};
+var MODES = [
+  { n: 1, tab: '1 Ideal', name: 'Ideal (no air)', tip: 'No air at all. Only gravity acts, so the path is a perfect parabola.', set: { airOn: false, v0: 30, angle: 45, h0: 0, ly: 0 }, planet: 'Earth' },
+  { n: 2, tab: '2 Cliff', name: 'Horizontal launch from a cliff', tip: 'Launch sideways (0°) from a cliff. With no air, the fall time depends only on the height.', set: { airOn: false, v0: 20, angle: 0, h0: 80, ly: 0 }, planet: 'Earth' },
+  { n: 3, tab: '3 Height', name: 'Launch from a height', tip: 'Start high above the ground. Find the best angle and notice it is below 45°.', set: { airOn: false, v0: 25, angle: 35, h0: 30, ly: 0 }, planet: 'Earth' },
+  { n: 4, tab: '4 Landing level', name: 'Launch onto a raised or lower landing level', tip: 'The object lands on a surface at a different height. Try a higher level, then a lower one.', set: { airOn: false, v0: 30, angle: 60, h0: 0, ly: 15 }, planet: 'Earth' },
+  { n: 5, tab: '5 Air', name: 'Air resistance', tip: 'Drag slows the object, shortens the range and makes the fall steeper than the climb.', set: { airOn: true, v0: 40, angle: 35, h0: 0, ly: 0, windSpeed: 0, backspin: 0, sidespin: 0 }, planet: 'Earth', obj: 'Cricket ball' },
+  { n: 6, tab: '6 Wind', name: 'Wind', tip: 'A headwind slows the shot. Try a tailwind and a crosswind with the shortcuts in Air and wind.', set: { airOn: true, v0: 50, angle: 30, h0: 0, ly: 0, windSpeed: 10, windDir: 180, backspin: 0, sidespin: 0 }, planet: 'Earth', obj: 'Golf ball' },
+  { n: 7, tab: '7 Spin', name: 'Spin and the Magnus effect', tip: 'Backspin lifts the ball, topspin pushes it down and sidespin curves it.', set: { airOn: true, v0: 60, angle: 12, h0: 0, ly: 0, windSpeed: 0, backspin: 3000, sidespin: 0 }, planet: 'Earth', obj: 'Golf ball' },
+  { n: 8, tab: '8 Planets', name: 'Other planets', tip: 'Same shot, different gravity. Pick Earth, Moon, Mars, Venus or Jupiter in the World section.', set: { airOn: false, v0: 30, angle: 45, h0: 0, ly: 0 }, planet: 'Moon' },
+  { n: 9, tab: '9 Compare', name: 'Compare Vacuum vs Real Air', tip: 'Both paths are drawn together: the real-air path (sky blue) and the vacuum path (white dashed).', set: { airOn: true, v0: 40, angle: 35, h0: 0, ly: 0, windSpeed: 0, backspin: 0, sidespin: 0 }, planet: 'Earth', obj: 'Cricket ball' }
+];
+var BADGES = [
+  { id: 'first', name: 'First launch', desc: 'Fire your first shot.' },
+  { id: 'target', name: 'Hit the target', desc: 'Land inside a target in Target practice.' },
+  { id: 'beat45', name: 'Beat 45°', desc: 'Land farther than a 45° shot would under the same conditions.' },
+  { id: 'planets', name: 'Planet hopper', desc: 'Launch on three different worlds.' }
+];
+
+/* =========================================================
+   2. STATE
+   ========================================================= */
+var S = { airOn: false, altDensity: false };
+CONTROLS.forEach(function (c) { S[c.id] = c.def; });
+var mode = 1, planet = 'Earth', objName = 'Football', night = false, compare = false, slowmo = false;
+var plan = null, vacRes = null, shot = null, ghost = null, ghostOn = false, trails = [], particles = [];
+var target = null, targetMode = false, score = { pts: 0, hits: 0, tries: 0 };
+var view3d = false, dirty = true, boundsDirty = true, bounds = { minX: 0, maxX: 10, minY: 0, maxY: 10 };
+var vecs = { v: true, comp: false, g: false, drag: true, magnus: true };
+var lastResultText = '';
+
+/* =========================================================
+   3. SMALL HELPERS
+   ========================================================= */
+function fmt(v, d) {
+  if (d === undefined) d = 2;
+  if (!isFinite(v)) return '–';
+  var f = Math.pow(10, d), r = Math.round(v * f) / f;
+  if (r === 0) r = 0;
+  return r.toFixed(d);
+}
+function clamp(v, a, b) { return Math.min(b, Math.max(a, v)); }
+var toastTimer = 0;
+function toast(msg) {
+  var t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 4200);
+}
+function cur() { return Object.assign({}, S); }
+
+/* =========================================================
+   4. CONTROL PANEL (sliders + number boxes, validated)
+   ========================================================= */
+function buildControls() {
+  CONTROLS.forEach(function (c) {
+    var host = $('#g-' + c.group);
+    var d = document.createElement('div');
+    d.className = 'ctl'; d.id = 'ctl-' + c.id;
+    d.innerHTML = '<label for="n-' + c.id + '">' + c.label + ' <span class="unit">(' + c.unit + ')</span></label>' +
+      '<div class="row"><input type="range" id="r-' + c.id + '" min="' + c.min + '" max="' + c.max + '" step="' + c.step + '" aria-label="' + c.label + ' slider, ' + c.unit + '">' +
+      '<input type="number" id="n-' + c.id + '" min="' + c.min + '" max="' + c.max + '" step="' + c.step + '" inputmode="decimal"></div>';
+    // spin controls go after the hint paragraph; other groups simply append
+    host.appendChild(d);
+    var r = $('#r-' + c.id, d), n = $('#n-' + c.id, d);
+    r.addEventListener('input', function () { setValue(c.id, r.value); });
+    n.addEventListener('input', function () {
+      var v = parseFloat(n.value);
+      if (isFinite(v) && v >= c.min && v <= c.max) setValue(c.id, v, { quiet: true });
+    });
+    n.addEventListener('change', function () { setValue(c.id, n.value); });
+  });
+  // object pills
+  var op = $('#objPills');
+  Object.keys(OBJECTS).forEach(function (k) {
+    var b = document.createElement('button'); b.className = 'pill'; b.type = 'button'; b.textContent = k; b.dataset.obj = k;
+    b.addEventListener('click', function () { setObject(k); });
+    op.appendChild(b);
+  });
+  var gp = $('#gravPills');
+  Object.keys(PLANETS).forEach(function (k) {
+    var b = document.createElement('button'); b.className = 'pill'; b.type = 'button'; b.dataset.planet = k;
+    b.textContent = k + ' ' + PLANETS[k].g;
+    b.setAttribute('aria-label', k + ', gravity ' + PLANETS[k].g + ' metres per second squared');
+    b.addEventListener('click', function () { setPlanet(k); });
+    gp.appendChild(b);
+  });
+}
+function setValue(id, val, o) {
+  o = o || {};
+  var c = CTL[id], v = Number(val);
+  if (val === '' || !isFinite(v)) {
+    toast('Please type a number for ' + c.label + '.'); syncUI(); return;
+  }
+  if (id === 'windDir') { v = ((v % 360) + 360) % 360; }
+  var cl = clamp(v, c.min, c.max);
+  if (cl !== v && !o.preset) toast(c.label + ' must be between ' + c.min + ' and ' + c.max + ' ' + c.unit + '. Adjusted to ' + cl + '.');
+  S[id] = cl;
+  if (id === 'g' && !o.preset) { planet = 'Custom'; Object.keys(PLANETS).forEach(function (k) { if (Math.abs(PLANETS[k].g - cl) < 1e-9) planet = k; }); }
+  if ((id === 'mass' || id === 'radius' || id === 'cd') && !o.preset) objName = 'Custom';
+  if (!o.quiet) syncUI();
+  else { var r = $('#r-' + id); if (r) r.value = S[id]; }
+  dirty = true; boundsDirty = true;
+}
+function setObject(k) {
+  var o = OBJECTS[k]; if (!o) return;
+  objName = k;
+  setValue('mass', o.mass, { preset: true, quiet: true }); setValue('radius', o.radius, { preset: true, quiet: true }); setValue('cd', o.cd, { preset: true });
+  if (k === 'Feather-light balloon') toast('Buoyancy is not modelled, so this balloon is treated as a very light ball.');
+}
+function setPlanet(k, silent) {
+  planet = k;
+  if (PLANETS[k]) {
+    setValue('g', PLANETS[k].g, { preset: true, quiet: true });
+    setValue('rho', PLANETS[k].rho, { preset: true });
+    if (S.airOn && !silent) toast('Air density set to a typical value for ' + k + ' (' + PLANETS[k].rho + ' kg/m³).');
+  }
+  syncUI();
+}
+function syncUI() {
+  CONTROLS.forEach(function (c) {
+    var r = $('#r-' + c.id), n = $('#n-' + c.id);
+    if (document.activeElement !== n) n.value = +S[c.id].toFixed(4);
+    r.value = S[c.id];
+    var box = $('#ctl-' + c.id); if (c.air) box.classList.toggle('dim', !S.airOn);
+  });
+  $$('#objPills .pill').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.obj === objName)); });
+  $$('#gravPills .pill').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.planet === planet)); });
+  $('#cAir').checked = S.airOn; $('#cAlt').checked = S.altDensity;
+  $('#airNote').textContent = S.airOn ? '' : 'Air is off, so drag, wind and spin have no effect. Turn it on to use them.';
+  $('#nightRow').hidden = !(planet === 'Earth' || planet === 'Custom');
+  $('#cNight').checked = night;
+  $$('#tabs .tab').forEach(function (t) { var on = +t.dataset.n === mode; t.setAttribute('aria-selected', String(on)); t.tabIndex = on ? 0 : -1; });
+  var m = MODES[mode - 1]; $('#modeDesc').textContent = m.name + ': ' + m.tip;
+  updateHandle();
+}
+
+/* =========================================================
+   5. MODES (tabs)
+   ========================================================= */
+function buildTabs() {
+  var host = $('#tabs');
+  MODES.forEach(function (m) {
+    var b = document.createElement('button'); b.className = 'tab'; b.type = 'button'; b.setAttribute('role', 'tab');
+    b.dataset.n = m.n; b.textContent = m.tab; b.title = m.name; b.setAttribute('aria-label', 'Mode ' + m.n + ': ' + m.name);
+    b.addEventListener('click', function () { applyMode(m.n); });
+    b.addEventListener('keydown', function (e) {
+      var k = e.key, nn = null;
+      if (k === 'ArrowRight') nn = m.n % 9 + 1; else if (k === 'ArrowLeft') nn = (m.n + 7) % 9 + 1;
+      else if (k === 'Home') nn = 1; else if (k === 'End') nn = 9;
+      if (nn) { e.preventDefault(); applyMode(nn); $('#tabs .tab[data-n="' + nn + '"]').focus(); }
+    });
+    host.appendChild(b);
+  });
+}
+function applyMode(n) {
+  var m = MODES[n - 1]; mode = n; compare = (n === 9);
+  S.airOn = !!m.set.airOn;
+  Object.keys(m.set).forEach(function (k) { if (k !== 'airOn') setValue(k, m.set[k], { preset: true, quiet: true }); });
+  if (m.planet) { planet = m.planet; setValue('g', PLANETS[m.planet].g, { preset: true, quiet: true }); setValue('rho', PLANETS[m.planet].rho, { preset: true, quiet: true }); }
+  if (m.obj) setObject(m.obj); else if (n <= 4 || n === 8) { objName = 'Football'; setValue('mass', 0.43, { preset: true, quiet: true }); setValue('radius', 0.11, { preset: true, quiet: true }); setValue('cd', 0.25, { preset: true, quiet: true }); }
+  if (m.planet === 'Earth') setValue('rho', 1.225, { preset: true, quiet: true });
+  if (n < 6) { setValue('windSpeed', 0, { preset: true, quiet: true }); setValue('windDir', 0, { preset: true, quiet: true }); }
+  doReset(true); syncUI(); dirty = true; boundsDirty = true;
+  try { history.replaceState(null, '', '#mode=' + n); } catch (e) { }
+}
+
+/* =========================================================
+   6. PRECOMPUTED PLAN, VACUUM CHECK, "WHY" TEXT
+   ========================================================= */
+function recompute() {
+  var p = cur();
+  var sv = P.sanitize(p);
+  plan = P.simulate(p);
+  vacRes = (sv.p.airOn && sv.p.rho > 0) ? P.simulate(Object.assign({}, p, { airOn: false })) : plan;
+  dirty = false; boundsDirty = true;
+  updateVacuumCheck(sv.p); updateWhy(sv.p); updateAria(sv.p);
+  updateHandle();
+}
+function distOf(res) { return res.status === 'landed' ? res.landing.dist : 0; }
+
+function updateVacuumCheck(p) {
+  var f = P.vacuumFormula(Object.assign({}, p, { airOn: false }));
+  var tb = $('#vcTable tbody'); tb.innerHTML = '';
+  var tick = $('#vcTick'), txt = $('#vcText');
+  var r = vacRes === plan && !p.airOn ? plan : P.simulate(Object.assign({}, p, { airOn: false }));
+  if (r.status === 'timeout') { tick.textContent = ''; txt.textContent = 'This flight is longer than 30 minutes, so the check is skipped.'; return; }
+  if (!f.reaches) {
+    tick.textContent = ''; txt.textContent = 'In a vacuum this launch never reaches the landing level, so there is no landing point to compare.'; return;
+  }
+  var rows = [
+    ['Range (m)', f.range, r.landing.x, 1e-3], ['Time of flight (s)', f.time, r.landing.t, 1e-4],
+    ['Max height (m)', f.maxHeight, r.apex.y, 1e-3], ['Impact speed (m/s)', f.impactSpeed, r.landing.speed, 1e-3]
+  ];
+  var ok = true;
+  rows.forEach(function (x) {
+    var tol = x[3] + 1e-6 * Math.abs(x[1]), good = Math.abs(x[1] - x[2]) <= tol; if (!good) ok = false;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + x[0] + '</td><td>' + fmt(x[1], 4) + '</td><td>' + fmt(x[2], 4) + '</td>';
+    tb.appendChild(tr);
+  });
+  tick.textContent = ok ? '✓' : '✗'; tick.className = ok ? 'tick' : 'bad';
+  tick.setAttribute('aria-hidden', 'false'); tick.setAttribute('aria-label', ok ? 'Match' : 'Mismatch');
+  txt.textContent = (ok ? 'The simulation matches the textbook formulas for your current speed, angle, heights and gravity (air switched off for this check).' : 'The simulation and the formulas differ. Please report this.');
+}
+
+function updateWhy(p) {
+  var r = plan, v = vacRes, s = [], i;
+  var el = $('#why'), op = $('#opt');
+  var onP = planet !== 'Custom' ? ' on ' + planet : '';
+  if (r.status === 'timeout') { el.textContent = 'This flight lasts more than 30 minutes, so the lab stops it. Try more gravity or less speed.'; op.textContent = ''; return; }
+  if (r.status === 'short') { el.textContent = 'The object does not have enough upward speed to reach the landing level, so it rises, slows and falls back. Try more speed or a steeper angle.'; op.textContent = ''; return; }
+  if (p.v0 === 0) { el.textContent = 'With a launch speed of 0 m/s the object is simply dropped, so it falls straight down.'; op.textContent = ''; return; }
+  var R = r.landing.dist, Rv = v.landing.dist, dh = p.h0 - p.ly;
+  var useAir = p.airOn && p.rho > 0;
+  var optA = P.optimalAngleFormula(p.v0, p.g, dh), Rmax = P.maxRangeFormula(p.v0, p.g, dh);
+  if (!useAir) {
+    s.push('With no air, only gravity (' + fmt(p.g) + ' m/s²' + onP + ') acts, so the path is a perfect parabola that lands ' + fmt(R, 1) + ' m away.');
+    var pct = Rmax > 0 ? fmt(100 * R / Rmax, 0) : '0';
+    if (Math.abs(dh) < 1e-9) s.push('On level ground the best angle is exactly 45°, and your ' + fmt(p.angle, 1) + '° shot reaches ' + pct + '% of the longest possible range.');
+    else if (dh > 0) s.push('Because you launch ' + fmt(dh, 1) + ' m above the landing level, the best angle is below 45° (about ' + fmt(optA, 1) + '° here), and your ' + fmt(p.angle, 1) + '° shot reaches ' + pct + '% of the longest range.');
+    else s.push('Because you land ' + fmt(-dh, 1) + ' m higher than you launch, the best angle is above 45° (about ' + fmt(optA, 1) + '° here), and your ' + fmt(p.angle, 1) + '° shot reaches ' + pct + '% of the longest range.');
+    op.textContent = optA === null ? '' : 'Formula for the best angle with no air: θ = arctan(v / √(v² + 2·g·Δh)) = ' + fmt(optA, 2) + '°, with Δh = launch height − landing level.';
+  } else {
+    var diff = Rv > 0 ? (1 - R / Rv) * 100 : 0;
+    s.push('Air drag pushes against the motion, so the object travels ' + fmt(R, 1) + ' m instead of the ' + fmt(Rv, 1) + ' m it would reach in a vacuum' +
+      (diff >= 0 ? ' (' + fmt(diff, 0) + '% shorter).' : ' (' + fmt(-diff, 0) + '% farther, helped by wind or spin).'));
+    var wa = p.windDir * Math.PI / 180, c = Math.cos(wa), extra = [];
+    if (p.windSpeed > 0.05) {
+      if (c > 0.5) extra.push('A tailwind of ' + fmt(p.windSpeed, 1) + ' m/s pushes it along.');
+      else if (c < -0.5) extra.push('A headwind of ' + fmt(p.windSpeed, 1) + ' m/s slows it down.');
+      else extra.push('The crosswind pushes it ' + fmt(Math.abs(r.landing.z), 1) + ' m sideways.');
+    }
+    if (p.backspin > 0) extra.push('Backspin makes lift (the Magnus effect), so it stays up longer.');
+    else if (p.backspin < 0) extra.push('Topspin pushes it downward, so it dips sooner.');
+    if (p.sidespin !== 0) extra.push('Sidespin curves it ' + fmt(Math.abs(r.landing.z), 1) + ' m sideways.');
+    extra.push('With air, the best angle is usually below 45°; press Find best angle to see yours.');
+    s.push(extra[0]);
+    op.textContent = '';
+  }
+  el.textContent = s.slice(0, 2).join(' ');
+}
+function updateAria(p) {
+  var t = 'Simulation of a projectile launched at ' + fmt(p.v0, 1) + ' metres per second and ' + fmt(p.angle, 1) + ' degrees from a height of ' + fmt(p.h0, 1) + ' metres' + (planet !== 'Custom' ? ' on ' + planet : '') + '. ';
+  t += plan.status === 'landed' ? 'The planned path lands ' + fmt(plan.landing.x, 1) + ' metres away.' : 'The planned path does not reach the landing level.';
+  $('#sim').setAttribute('aria-label', t + (lastResultText ? ' ' + lastResultText : ''));
+}
+
+/* =========================================================
+   7. SHOTS: launch, advance, landing, results, scoring
+   ========================================================= */
+function pushTrail(sh) { if (sh && sh.landed) { trails.push({ res: sh.res }); if (trails.length > 6) trails.shift(); boundsDirty = true; } }
+function launch(startPaused) {
+  var p = cur(), sv = P.sanitize(p);
+  var res = P.simulate(p);
+  var vac = null;
+  if (compare) vac = (sv.p.airOn && sv.p.rho > 0) ? P.simulate(Object.assign({}, p, { airOn: false })) : res;
+  if (shot) pushTrail(shot);
+  shot = { res: res, vac: vac, p: sv.p, t: 0, T: res.T, TT: Math.max(res.T, vac ? vac.T : 0), playing: !startPaused, landed: false, finished: false };
+  computeBounds(); boundsDirty = false;
+  $('#bPause').textContent = startPaused ? 'Resume' : 'Pause';
+  sound('launch'); unlock('first');
+  try {
+    var set = JSON.parse(store.get('nav-planets') || '[]'); var key = planet;
+    if (set.indexOf(key) < 0) { set.push(key); store.set('nav-planets', JSON.stringify(set)); }
+    if (set.filter(function (k) { return k !== 'Custom'; }).length >= 3) unlock('planets');
+  } catch (e) { }
+  if (shot.T <= 1e-9) advance(0);
+}
+function advance(dtSim) {
+  if (!shot) return;
+  shot.t = Math.min(shot.TT, shot.t + dtSim);
+  if (!shot.landed && shot.t >= shot.res.T) { shot.landed = true; onLanding(shot); }
+  if (shot.t >= shot.TT) { shot.finished = true; shot.playing = false; $('#bPause').textContent = 'Pause'; }
+}
+function onLanding(sh) {
+  var L = sh.res.landing, p = sh.p;
+  showResult(sh);
+  var sp = P.sampleAt(sh.res, sh.res.T);
+  spawnParticles(sp.x, sp.y);
+  sound('land');
+  // Beat 45 degrees: compare with a 45 degree shot under the same conditions
+  if (sh.res.status === 'landed' && Math.abs(p.angle - 45) > 0.5) {
+    var r45 = P.simulate(Object.assign({}, p, { angle: 45 }));
+    if (r45.status === 'landed' && r45.landing.dist > 0 && L.dist > r45.landing.dist * (1 + 1e-6)) unlock('beat45');
+  }
+  if (targetMode && target) {
+    score.tries++;
+    var d = Math.hypot(L.x - target.x, L.z);
+    if (sh.res.status === 'landed' && d <= target.r) {
+      var pts = 10 + Math.round(90 * (1 - d / target.r)); score.pts += pts; score.hits++;
+      toast('Hit! +' + pts + ' points'); unlock('target'); sound('hit');
+      setTimeout(newTarget, 1200);
+    } else {
+      toast('Missed by ' + fmt(Math.max(0, d - target.r), 1) + ' m. The target is at ' + fmt(target.x, 1) + ' m.');
+    }
+    updateScore();
+  }
+}
+function showResult(sh) {
+  var L = sh.res.landing, ap = sh.res.apex, p = sh.p, st = sh.res.status;
+  $('#rEmpty').hidden = true; $('#rBox').hidden = false;
+  $('#rRange').textContent = fmt(L.x, 2) + ' m';
+  $('#rH').textContent = fmt(ap.y, 2) + ' m' + (ap.y - p.h0 > 0.005 ? ' (' + fmt(ap.y - p.h0, 2) + ' m above launch)' : '');
+  $('#rT').textContent = fmt(L.t, 2) + ' s';
+  $('#rV').textContent = fmt(L.speed, 2) + ' m/s';
+  $('#rA').textContent = fmt(L.angle, 1) + '° below horizontal';
+  var drift = Math.abs(L.z) > 0.005;
+  $('#rDt').hidden = !drift; $('#rD').hidden = !drift; $('#rD').textContent = fmt(L.z, 2) + ' m';
+  var note = '';
+  if (st === 'short') note = 'The object never reached the landing level (' + fmt(p.ly, 1) + ' m). The values show where it fell back to the launch height.';
+  else if (st === 'timeout') note = 'The simulation stopped after 30 minutes of flight time.';
+  $('#rNote').textContent = note;
+  var cmp = '';
+  if (sh.vac && sh.vac !== sh.res && sh.vac.status === 'landed' && st === 'landed') {
+    var dv = sh.vac.landing.dist, da = L.dist;
+    cmp = 'Vacuum range: ' + fmt(dv, 2) + ' m. Real air: ' + fmt(da, 2) + ' m. Air changed the range by ' + fmt(da - dv, 2) + ' m (' + fmt(dv > 0 ? 100 * (da - dv) / dv : 0, 1) + '%).';
+  }
+  $('#rCmp').textContent = cmp;
+  lastResultText = 'Last shot: range ' + fmt(L.x, 1) + ' metres, maximum height ' + fmt(ap.y, 1) + ' metres, time of flight ' + fmt(L.t, 2) + ' seconds.';
+  updateAria(P.sanitize(cur()).p);
+}
+function doReset(keepTrails) {
+  shot = null; particles = []; lastResultText = '';
+  if (!keepTrails) trails = [];
+  if (keepTrails === true) trails = [];
+  $('#rEmpty').hidden = false; $('#rBox').hidden = true; $('#rNote').textContent = ''; $('#rCmp').textContent = '';
+  $('#bPause').textContent = 'Pause'; boundsDirty = true;
+}
+
+/* target practice */
+function newTarget() {
+  if (!targetMode) return;
+  var best = P.findBestAngle(cur(), { coarse: true });
+  if (!best || best.dist < 6) { target = null; updateScore(); toast('Increase the launch speed to place a target.'); return; }
+  var d = best.dist * (0.25 + 0.6 * Math.random());
+  target = { x: d, r: Math.max(1.2, best.dist * 0.04) };
+  boundsDirty = true; updateScore();
+}
+function updateScore() {
+  var el = $('#scoreLine'); el.hidden = !targetMode;
+  el.textContent = targetMode ? ('Target practice: ' + score.pts + ' points · ' + score.hits + ' hit' + (score.hits === 1 ? '' : 's') + ' from ' + score.tries + ' shot' + (score.tries === 1 ? '' : 's') + (target ? '. Target is ' + fmt(target.x, 1) + ' m away (radius ' + fmt(target.r, 1) + ' m).' : '.')) : '';
+}
+
+/* badges */
+function badgeState() { try { return JSON.parse(store.get('nav-badges') || '{}'); } catch (e) { return {}; } }
+function unlock(id) {
+  var b = badgeState(); if (b[id]) return; b[id] = 1; store.set('nav-badges', JSON.stringify(b));
+  var nm = BADGES.filter(function (x) { return x.id === id; })[0].name;
+  setTimeout(function () { toast('Badge unlocked: ' + nm); }, 600); renderBadges();
+}
+function renderBadges() {
+  var b = badgeState(), list = $('#badgeList'), hud = $('#badgeHud'); list.innerHTML = ''; hud.innerHTML = '';
+  BADGES.forEach(function (x) {
+    var got = !!b[x.id];
+    var s = document.createElement('span'); s.className = 'badge ' + (got ? 'got' : 'lock');
+    s.textContent = (got ? '★ ' : '☆ ') + x.name; s.title = x.desc;
+    s.setAttribute('aria-label', x.name + ': ' + (got ? 'unlocked' : 'locked') + '. ' + x.desc);
+    list.appendChild(s);
+    if (got) { var h = document.createElement('span'); h.className = 'chip'; h.textContent = '★ ' + x.name; hud.appendChild(h); }
+  });
+}
+
+/* =========================================================
+   8. SOUND (tiny, quiet, made with the Web Audio API)
+   ========================================================= */
+var ac = null;
+function audio() { if (ac === null) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = false; } } return ac; }
+function tone(a, f0, f1, dur, vol, type) {
+  var o = a.createOscillator(), g = a.createGain(), t = a.currentTime;
+  o.type = type || 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function sound(kind) {
+  if (muted) return; var a = audio(); if (!a) return; if (a.state === 'suspended') a.resume();
+  if (kind === 'launch') { tone(a, 260, 70, 0.28, 0.07, 'triangle'); tone(a, 120, 50, 0.2, 0.05, 'sine'); }
+  else if (kind === 'land') { tone(a, 130, 45, 0.22, 0.09, 'sine'); }
+  else if (kind === 'hit') { tone(a, 660, 660, 0.15, 0.05, 'sine'); setTimeout(function () { tone(a, 880, 880, 0.25, 0.05, 'sine'); }, 130); }
+}
+
+/* =========================================================
+   9. BOUNDS AND VIEW (equal scale on both axes, so angles look right)
+   ========================================================= */
+function computeBounds() {
+  var b = { minX: 0, maxX: 10, minY: Math.min(0, S.ly, S.h0), maxY: Math.max(S.h0, S.ly, 0) + 2 };
+  function add(r) { if (!r) return; b.minX = Math.min(b.minX, r.minX); b.maxX = Math.max(b.maxX, r.maxX); b.minY = Math.min(b.minY, r.minY); b.maxY = Math.max(b.maxY, r.maxY); }
+  add(plan); if (shot) { add(shot.res); add(shot.vac); } if (compare) add(vacRes); if (ghost) add(ghost.res);
+  trails.forEach(function (t) { add(t.res); });
+  if (target) b.maxX = Math.max(b.maxX, target.x + target.r);
+  bounds = b;
+}
+function makeView(W, H) {
+  var b = bounds, padL = Math.max(54, W * 0.07), padR = Math.max(16, W * 0.03), padT = Math.max(34, H * 0.1), padB = Math.max(34, H * 0.12);
+  var sx = Math.max(b.maxX - b.minX, 12), sy = Math.max(b.maxY - b.minY, 8);
+  var sc = Math.min((W - padL - padR) / sx, (H - padT - padB) / sy);
+  return { W: W, H: H, sc: sc, X: function (x) { return padL + (x - b.minX) * sc; }, Y: function (y) { return H - padB - (y - b.minY) * sc; } };
+}
+function niceStep(t) { var e = Math.pow(10, Math.floor(Math.log10(t))), m = t / e; return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * e; }
+function lab(ctx, t, x, y, align) {
+  ctx.font = '12px system-ui,sans-serif'; var w = ctx.measureText(t).width + 8, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x;
+  ctx.fillStyle = 'rgba(5,11,36,.75)'; ctx.fillRect(x0, y - 11, w, 16); ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillText(t, x0 + 4, y + 1);
+}
+var STARS = []; (function () { var s = 7; function rnd() { s = (s * 16807) % 2147483647; return s / 2147483647; } for (var i = 0; i < 140; i++) STARS.push([rnd(), rnd() * 0.85, 0.6 + rnd() * 1.4]); })();
+
+/* =========================================================
+   10. 2D DRAWING
+   ========================================================= */
+function strokeRes(ctx, V, res, tEnd, color, width, dash, glow) {
+  var s = res.samples, n = res.n; if (n < 2) return;
+  var stride = Math.max(1, Math.floor(n / 1200)), started = false, i;
+  ctx.beginPath();
+  for (i = 0; i < n; i += stride) {
+    var t = s[i * 7]; if (t > tEnd) break;
+    var x = V.X(s[i * 7 + 1]), y = V.Y(s[i * 7 + 2]);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  if (tEnd >= res.T) ctx.lineTo(V.X(s[(n - 1) * 7 + 1]), V.Y(s[(n - 1) * 7 + 2]));
+  else { var st = P.sampleAt(res, tEnd); ctx.lineTo(V.X(st.x), V.Y(st.y)); }
+  ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.setLineDash(dash || []); if (glow && !low && !reduce) { ctx.shadowColor = color; ctx.shadowBlur = 14; }
+  ctx.stroke(); ctx.restore();
+}
+function arrow(ctx, x0, y0, dx, dy, color, label, dash) {
+  var len = Math.hypot(dx, dy); if (len < 3) return;
+  var x1 = x0 + dx, y1 = y0 + dy, a = Math.atan2(dy, dx), h = Math.min(10, len * 0.4);
+  ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 2.5; ctx.setLineDash(dash ? [5, 4] : []);
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - h * Math.cos(a - 0.4), y1 - h * Math.sin(a - 0.4)); ctx.lineTo(x1 - h * Math.cos(a + 0.4), y1 - h * Math.sin(a + 0.4)); ctx.closePath(); ctx.fill();
+  ctx.restore(); lab(ctx, label, x1 + 6, y1 - 6, 'left');
+}
+function maxSpeed(res) {
+  if (res._vmax) return res._vmax; var m = 1, s = res.samples, i;
+  for (i = 0; i < res.n; i++) { var sp = Math.hypot(s[i * 7 + 4], s[i * 7 + 5], s[i * 7 + 6]); if (sp > m) m = sp; }
+  res._vmax = m; return m;
+}
+function skyFor() { var k = SKY[planet] || SKY.Earth; var cols = (k.night && night) ? k.night : k.day; return { cols: cols, ground: k.ground, stars: k.stars || (k.night && night) }; }
+
+function drawScene(ctx, W, H, o) {
+  o = o || {};
+  var V = makeView(W, H), b = bounds, sk = skyFor();
+  // sky
+  var g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, sk.cols[0]); g.addColorStop(0.55, sk.cols[1]); g.addColorStop(1, sk.cols[2]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  if (planet === 'Jupiter') { ctx.fillStyle = 'rgba(255,255,255,.07)'; for (var j = 0; j < 6; j++) ctx.fillRect(0, H * (0.1 + j * 0.15), W, H * 0.05); }
+  if (sk.stars) { ctx.fillStyle = '#fff'; STARS.forEach(function (s) { ctx.globalAlpha = 0.5 + 0.5 * s[2] / 2; ctx.beginPath(); ctx.arc(s[0] * W, s[1] * H, s[2], 0, 7); ctx.fill(); }); ctx.globalAlpha = 1; }
+  if (planet === 'Moon') { var eg = ctx.createRadialGradient(W * 0.82, H * 0.2, 2, W * 0.82, H * 0.2, 22); eg.addColorStop(0, '#9fd0ff'); eg.addColorStop(1, '#2a5bd7'); ctx.fillStyle = eg; ctx.beginPath(); ctx.arc(W * 0.82, H * 0.2, 22, 0, 7); ctx.fill(); }
+  if ((planet === 'Earth' || planet === 'Custom') && night && !low) {
+    var ag = ctx.createRadialGradient(W * 0.3, H * 0.15, 5, W * 0.3, H * 0.15, W * 0.4); ag.addColorStop(0, 'rgba(135,206,235,.35)'); ag.addColorStop(1, 'rgba(135,206,235,0)'); ctx.fillStyle = ag; ctx.fillRect(0, 0, W, H);
+  }
+  // grid + labels
+  ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.16)';
+  var sx = niceStep(90 / V.sc), sy = niceStep(60 / V.sc), x, y;
+  for (x = Math.ceil(b.minX / sx) * sx; V.X(x) < W; x += sx) { ctx.beginPath(); ctx.moveTo(V.X(x), 0); ctx.lineTo(V.X(x), H); ctx.stroke(); lab(ctx, String(+x.toFixed(2)) + ' m', V.X(x), H - 6, 'center'); }
+  for (y = Math.ceil(b.minY / sy) * sy; V.Y(y) > 0; y += sy) { ctx.beginPath(); ctx.moveTo(0, V.Y(y)); ctx.lineTo(W, V.Y(y)); ctx.stroke(); lab(ctx, String(+y.toFixed(2)) + ' m', 4, V.Y(y) - 2, 'left'); }
+  // terrain
+  var active = shot ? shot.res : plan, gy = V.Y(S.ly), hy = V.Y(S.h0);
+  ctx.fillStyle = sk.ground; var edge = '#87CEEB';
+  if (S.h0 > S.ly + 1e-9) {
+    ctx.fillRect(0, hy, V.X(0), H - hy); ctx.fillRect(V.X(0), gy, W - V.X(0), H - gy);
+    ctx.fillStyle = edge; ctx.fillRect(0, hy - 2, V.X(0), 3); ctx.fillRect(V.X(0), gy - 2, W - V.X(0), 3);
+  } else if (S.h0 < S.ly - 1e-9) {
+    var ex = null, s = active.samples, i;
+    for (i = 0; i < active.n; i++) { if (s[i * 7 + 2] >= S.ly) { ex = s[i * 7 + 1]; break; } }
+    if (ex === null) ex = active.maxX * 1.15 + 1; ex = Math.max(ex - 0.01, 0.05);
+    ctx.fillRect(0, hy, V.X(ex), H - hy); ctx.fillRect(V.X(ex), gy, W - V.X(ex), H - gy);
+    ctx.fillStyle = edge; ctx.fillRect(0, hy - 2, V.X(ex), 3); ctx.fillRect(V.X(ex), gy - 2, W - V.X(ex), 3);
+  } else { ctx.fillRect(0, gy, W, H - gy); ctx.fillStyle = edge; ctx.fillRect(0, gy - 2, W, 3); }
+  if (Math.abs(S.ly) > 1e-9 || S.h0 > 1e-9) { ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.moveTo(0, V.Y(0)); ctx.lineTo(W, V.Y(0)); ctx.stroke(); ctx.setLineDash([]); lab(ctx, 'y = 0 m (ground reference)', W - 8, V.Y(0) - 4, 'right'); }
+  // target
+  if (target) {
+    var tx = V.X(target.x), ty = V.Y(S.ly), tr = Math.max(4, target.r * V.sc);
+    ctx.fillStyle = '#ffb86b'; ctx.fillRect(V.X(target.x - target.r), ty - 4, 2 * tr, 6);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(tx, ty - 30); ctx.stroke();
+    ctx.fillStyle = '#ff7a96'; ctx.beginPath(); ctx.moveTo(tx, ty - 30); ctx.lineTo(tx + 16, ty - 24); ctx.lineTo(tx, ty - 18); ctx.fill();
+    lab(ctx, 'Target ' + fmt(target.x, 1) + ' m', tx, ty - 36, 'center');
+  }
+  // paths
+  trails.forEach(function (t) { strokeRes(ctx, V, t.res, Infinity, 'rgba(135,206,235,.30)', 2); });
+  if (ghost) strokeRes(ctx, V, ghost.res, Infinity, 'rgba(255,255,255,.65)', 2, [4, 6]);
+  var tNow = shot ? (o.end ? shot.TT : shot.t) : 0;
+  var live = shot && !shot.finished && shot.playing;
+  if (!live && plan) strokeRes(ctx, V, plan, Infinity, 'rgba(255,255,255,.45)', 2, [2, 6]);
+  if (compare) { var vr = shot && shot.vac ? shot.vac : vacRes; strokeRes(ctx, V, vr, shot && shot.vac ? tNow : 0, '#ffffff', 2.5, [8, 6]); if (!shot) strokeRes(ctx, V, vacRes, Infinity, 'rgba(255,255,255,.55)', 2, [8, 6]); }
+  if (shot) strokeRes(ctx, V, shot.res, tNow, '#87CEEB', 3.5, null, true);
+  // markers
+  if (shot && tNow >= shot.res.T) {
+    var L = shot.res.landing, lx = V.X(L.x), ly2 = V.Y(L.y);
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(lx, ly2, 5, 0, 7); ctx.fill();
+    lab(ctx, 'Range ' + fmt(L.x, 2) + ' m', lx, ly2 - 12, 'center');
+  }
+  if (shot && tNow >= shot.res.apex.t && shot.res.apex.y - shot.p.h0 > 0.05) {
+    var ax = V.X(shot.res.apex.x), ay = V.Y(shot.res.apex.y);
+    ctx.fillStyle = '#ffb86b'; ctx.beginPath(); ctx.arc(ax, ay, 4, 0, 7); ctx.fill(); lab(ctx, 'Top ' + fmt(shot.res.apex.y, 1) + ' m', ax, ay - 10, 'center');
+  }
+  // object(s) and arrows
+  var rs = shot ? shot.res : plan, st = shot ? P.sampleAt(rs, Math.min(tNow, rs.T)) : P.sampleAt(rs, 0);
+  var pp = shot ? shot.p : P.sanitize(cur()).p;
+  if (shot && shot.vac && shot.vac !== shot.res) { var sv2 = P.sampleAt(shot.vac, Math.min(tNow, shot.vac.T)); ball(ctx, V.X(sv2.x), V.Y(sv2.y), pp.radius * V.sc, 'rgba(255,255,255,.85)'); }
+  var bx = V.X(st.x), by = V.Y(st.y);
+  drawVectors(ctx, V, st, pp, rs, bx, by);
+  ball(ctx, bx, by, pp.radius * V.sc, '#87CEEB');
+  // particles
+  particles.forEach(function (q) { ctx.globalAlpha = Math.max(0, q.life / q.max); ctx.fillStyle = q.c; ctx.beginPath(); ctx.arc(V.X(q.wx) + q.ox, V.Y(q.wy) + q.oy, 2.6, 0, 7); ctx.fill(); }); ctx.globalAlpha = 1;
+  // cannon (drawn last so it sits on top)
+  var cx0 = V.X(0), cy0 = V.Y(S.h0), a = S.angle * Math.PI / 180;
+  ctx.save(); ctx.translate(cx0, cy0); ctx.rotate(-a);
+  ctx.fillStyle = '#e9f3ff'; ctx.strokeStyle = '#4169E1'; ctx.lineWidth = 3; roundRect(ctx, -6, -8, 46, 16, 5); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.fillStyle = '#0f1f5c'; ctx.strokeStyle = '#87CEEB'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx0, cy0, 11, 0, 7); ctx.fill(); ctx.stroke();
+  lab(ctx, fmt(S.angle, 1) + '°', cx0 + 54 * Math.cos(a) + 6, cy0 - 54 * Math.sin(a), 'left');
+  // small top view for sideways drift
+  var zr = Math.max(Math.abs(rs.minZ), Math.abs(rs.maxZ));
+  if (zr > 0.05 && W > 360) topView(ctx, W, H, rs, shot ? tNow : null, zr);
+  return V;
+}
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function ball(ctx, x, y, r, col) {
+  var rr = clamp(r, 5, 14); ctx.save();
+  if (!low && !reduce) { ctx.shadowColor = col; ctx.shadowBlur = 16; }
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.fill(); ctx.shadowBlur = 0; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+}
+function drawVectors(ctx, V, st, p, res, bx, by) {
+  var vref = maxSpeed(res), sp2 = Math.hypot(st.vx, st.vy);
+  if (vecs.v) arrow(ctx, bx, by, 95 * st.vx / vref, -95 * st.vy / vref, '#87CEEB', 'v');
+  if (vecs.comp) { arrow(ctx, bx, by, 95 * st.vx / vref, 0, '#ffffff', 'vx', true); arrow(ctx, bx, by, 0, -95 * st.vy / vref, '#ffffff', 'vy', true); }
+  var W = p.mass * p.g;
+  if (vecs.g) arrow(ctx, bx, by, 0, 50, '#ffb86b', 'g');
+  if (vecs.drag || vecs.magnus) {
+    var F = P.forcesAt(st, p);
+    function fv(f, col, name, on) { if (!on) return; var m = Math.hypot(f[0], f[1]); if (m < 1e-12) return; var L = Math.min(150, 50 * m / W); arrow(ctx, bx, by, L * f[0] / m, -L * f[1] / m, col, name); }
+    fv(F.drag, '#ff7a96', 'Fd', vecs.drag); fv(F.magnus, '#c9a9ff', 'Fm', vecs.magnus);
+  }
+}
+function topView(ctx, W, H, res, tNow, zr) {
+  var w = 130, h = 80, x0 = W - w - 10, y0 = 10, b = bounds;
+  ctx.fillStyle = 'rgba(5,11,36,.8)'; ctx.fillRect(x0, y0, w, h); ctx.strokeStyle = '#87CEEB'; ctx.strokeRect(x0, y0, w, h);
+  var sx = (w - 16) / Math.max(1, b.maxX), sz = (h - 24) / (2 * zr), s = res.samples, i, stride = Math.max(1, Math.floor(res.n / 200));
+  ctx.beginPath();
+  for (i = 0; i < res.n; i += stride) { if (tNow !== null && s[i * 7] > tNow) break; var px = x0 + 8 + s[i * 7 + 1] * sx, py = y0 + 8 + h / 2 - 4 - s[i * 7 + 3] * sz; if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
+  ctx.strokeStyle = '#87CEEB'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#fff'; ctx.font = '11px system-ui,sans-serif'; ctx.fillText('Top view (x across, z up)', x0 + 6, y0 + h - 6);
+}
+
+/* canvas sizing */
+function fit(cv) {
+  var dpr = Math.min(window.devicePixelRatio || 1, 2), w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  var c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); return { c: c, w: w, h: h };
+}
+
+/* cannon handle (a real slider for keyboard + touch + mouse) */
+var lastV = null;
+function updateHandle() {
+  var h = $('#handle'); h.hidden = view3d; if (view3d || !lastV) return;
+  var a = S.angle * Math.PI / 180, x = lastV.X(0) + 46 * Math.cos(a), y = lastV.Y(S.h0) - 46 * Math.sin(a);
+  h.style.transform = 'translate(' + (x - 28) + 'px,' + (y - 28) + 'px)';
+  h.setAttribute('aria-valuenow', fmt(S.angle, 1)); h.setAttribute('aria-valuetext', fmt(S.angle, 1) + ' degrees');
+}
+(function () {
+  var h = $('#handle'), drag = false;
+  h.addEventListener('pointerdown', function (e) { drag = true; h.setPointerCapture(e.pointerId); e.preventDefault(); h.style.cursor = 'grabbing'; });
+  h.addEventListener('pointerup', function () { drag = false; h.style.cursor = 'grab'; });
+  h.addEventListener('pointercancel', function () { drag = false; });
+  h.addEventListener('pointermove', function (e) {
+    if (!drag || !lastV) return;
+    var r = $('#sim').getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+    var cx = lastV.X(0), cy = lastV.Y(S.h0), a = Math.atan2(cy - py, px - cx) * 180 / Math.PI;
+    if (a > 90 || a < -90) a = 90; if (a < 0) a = 0;
+    setValue('angle', Math.round(a * 10) / 10, { quiet: false });
+  });
+  h.addEventListener('keydown', function (e) {
+    var d = e.shiftKey ? 5 : 1, k = e.key;
+    if (k === 'ArrowUp' || k === 'ArrowRight') { setValue('angle', S.angle + d); e.preventDefault(); }
+    else if (k === 'ArrowDown' || k === 'ArrowLeft') { setValue('angle', S.angle - d); e.preventDefault(); }
+    else if (k === 'Home') { setValue('angle', 0); e.preventDefault(); } else if (k === 'End') { setValue('angle', 90); e.preventDefault(); }
+  });
+})();
+
+/* =========================================================
+   11. PARTICLES
+   ========================================================= */
+function spawnParticles(wx, wy) {
+  if (reduce) return; var n = low ? 10 : 42, cols = ['#87CEEB', '#ffffff', '#4169E1', '#bfe6ff'];
+  for (var i = 0; i < n; i++) {
+    var a = Math.random() * Math.PI, sp = 60 + Math.random() * 190;
+    particles.push({ wx: wx, wy: wy, ox: 0, oy: 0, vx: Math.cos(a) * sp * (Math.random() < 0.5 ? -1 : 1), vy: -Math.sin(a) * sp, life: 0.9, max: 0.9, c: cols[i % 4] });
+  }
+}
+function stepParticles(dt) {
+  for (var i = particles.length - 1; i >= 0; i--) { var q = particles[i]; q.life -= dt; if (q.life <= 0) { particles.splice(i, 1); continue; } q.vy += 600 * dt; q.ox += q.vx * dt; q.oy += q.vy * dt; }
+}
+
+/* =========================================================
+   12. LIVE READOUTS AND GRAPHS
+   ========================================================= */
+function updateLive() {
+  var rs = shot ? shot.res : plan, p = shot ? shot.p : P.sanitize(cur()).p;
+  var t = shot ? Math.min(shot.t, rs.T) : 0, st = P.sampleAt(rs, t);
+  var sp = Math.hypot(st.vx, st.vy, st.vz), ke = 0.5 * p.mass * sp * sp, pe = p.mass * p.g * st.y;
+  $('#lx').textContent = fmt(st.x) + ' m'; $('#ly').textContent = fmt(st.y) + ' m'; $('#lz').textContent = fmt(st.z) + ' m';
+  $('#lvx').textContent = fmt(st.vx) + ' m/s'; $('#lvy').textContent = fmt(st.vy) + ' m/s'; $('#lsp').textContent = fmt(sp) + ' m/s';
+  $('#lt').textContent = fmt(t) + ' s'; $('#lke').textContent = fmt(ke) + ' J'; $('#lpe').textContent = fmt(pe) + ' J'; $('#lte').textContent = fmt(ke + pe) + ' J';
+}
+function graphData(res) {
+  if (res._g) return res._g; var g = { t: [], sp: [], vx: [], vy: [], y: [] }, s = res.samples, n = res.n, stride = Math.max(1, Math.floor(n / 300)), i;
+  for (i = 0; i < n; i += stride) { g.t.push(s[i * 7]); g.sp.push(Math.hypot(s[i * 7 + 4], s[i * 7 + 5], s[i * 7 + 6])); g.vx.push(s[i * 7 + 4]); g.vy.push(s[i * 7 + 5]); g.y.push(s[i * 7 + 2]); }
+  g.t.push(s[(n - 1) * 7]); g.sp.push(Math.hypot(s[(n - 1) * 7 + 4], s[(n - 1) * 7 + 5], s[(n - 1) * 7 + 6])); g.vx.push(s[(n - 1) * 7 + 4]); g.vy.push(s[(n - 1) * 7 + 5]); g.y.push(s[(n - 1) * 7 + 2]);
+  res._g = g; return g;
+}
+function drawGraph(cv, res, tNow, series, unit) {
+  var f = fit(cv), c = f.c, W = f.w, H = f.h, g = graphData(res), padL = 44, padB = 22, padT = 8, padR = 8;
+  c.clearRect(0, 0, W, H);
+  var T = Math.max(res.T, 1e-6), lo = Infinity, hi = -Infinity;
+  series.forEach(function (s) { g[s.k].forEach(function (v) { lo = Math.min(lo, v); hi = Math.max(hi, v); }); });
+  if (lo > 0) lo = 0; if (hi < 0) hi = 0; if (hi - lo < 1e-6) hi = lo + 1;
+  function X(t) { return padL + (t / T) * (W - padL - padR); } function Y(v) { return H - padB - (v - lo) / (hi - lo) * (H - padB - padT); }
+  c.strokeStyle = 'rgba(135,206,235,.2)'; c.fillStyle = '#cfe3f7'; c.font = '11px system-ui,sans-serif'; c.lineWidth = 1;
+  var step = niceStep((hi - lo) / 4), v;
+  for (v = Math.ceil(lo / step) * step; v <= hi; v += step) { c.beginPath(); c.moveTo(padL, Y(v)); c.lineTo(W - padR, Y(v)); c.stroke(); c.textAlign = 'right'; c.fillText(String(+v.toFixed(2)), padL - 4, Y(v) + 4); }
+  c.textAlign = 'center'; c.fillText('time (s): 0 to ' + fmt(T, 1), (W + padL) / 2, H - 5); c.textAlign = 'left'; c.fillText(unit, 2, 12);
+  var yy = 12;
+  series.forEach(function (s) {
+    c.strokeStyle = s.col; c.lineWidth = 2; c.setLineDash(s.dash || []); c.beginPath();
+    g.t.forEach(function (t, i) { var x = X(t), y = Y(g[s.k][i]); if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }); c.stroke(); c.setLineDash([]);
+    c.fillStyle = s.col; c.textAlign = 'right'; c.fillText(s.name, W - padR - 2, yy); yy += 13;
+  });
+  if (tNow !== null) { c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(X(Math.min(tNow, T)), padT); c.lineTo(X(Math.min(tNow, T)), H - padB); c.stroke(); }
+}
+
+/* =========================================================
+   13. OPTIONAL 3D VIEW (Three.js)
+   ========================================================= */
+var T3 = { ready: false, sig: '' };
+function init3D() {
+  if (T3.ready) return true; if (!window.THREE) return false;
+  try { T3.r = new THREE.WebGLRenderer({ canvas: $('#c3d'), antialias: !low, alpha: true }); } catch (e) { return false; }
+  T3.r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  T3.s = new THREE.Scene(); T3.cam = new THREE.PerspectiveCamera(50, 1, 0.05, 200000);
+  T3.s.add(new THREE.AmbientLight(0x9fb4ff, 0.9)); var dl = new THREE.DirectionalLight(0xffffff, 0.9); dl.position.set(1, 2, 1.5); T3.s.add(dl);
+  T3.grp = new THREE.Group(); T3.s.add(T3.grp);
+  T3.ball = new THREE.Mesh(new THREE.SphereGeometry(1, 20, 16), new THREE.MeshStandardMaterial({ color: 0x87CEEB, emissive: 0x2a8fc0, emissiveIntensity: 0.6 })); T3.s.add(T3.ball);
+  T3.th = -0.9; T3.ph = 1.15; T3.dist = 100; T3.c = new THREE.Vector3();
+  var cv = $('#c3d'), drag = false, lx = 0, ly = 0;
+  cv.addEventListener('pointerdown', function (e) { drag = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointerup', function () { drag = false; cv.style.cursor = 'grab'; });
+  cv.addEventListener('pointermove', function (e) { if (!drag) return; T3.th -= (e.clientX - lx) * 0.008; T3.ph = clamp(T3.ph - (e.clientY - ly) * 0.008, 0.15, 1.5); lx = e.clientX; ly = e.clientY; });
+  cv.addEventListener('wheel', function (e) { e.preventDefault(); T3.dist = clamp(T3.dist * (e.deltaY > 0 ? 1.1 : 0.9), T3.ext * 0.3, T3.ext * 6); }, { passive: false });
+  cv.addEventListener('keydown', function (e) {
+    var k = e.key; if (k === 'ArrowLeft') T3.th += 0.1; else if (k === 'ArrowRight') T3.th -= 0.1; else if (k === 'ArrowUp') T3.ph = clamp(T3.ph + 0.1, 0.15, 1.5); else if (k === 'ArrowDown') T3.ph = clamp(T3.ph - 0.1, 0.15, 1.5);
+    else if (k === '+' || k === '=') T3.dist = clamp(T3.dist * 0.9, T3.ext * 0.3, T3.ext * 6); else if (k === '-') T3.dist = clamp(T3.dist * 1.1, T3.ext * 0.3, T3.ext * 6); else return; e.preventDefault();
+  });
+  T3.ready = true; return true;
+}
+function lineFrom(res, col, opacity) {
+  var pts = [], s = res.samples, n = res.n, stride = Math.max(1, Math.floor(n / 800)), i;
+  for (i = 0; i < n; i += stride) pts.push(s[i * 7 + 1], s[i * 7 + 2], s[i * 7 + 3]);
+  pts.push(s[(n - 1) * 7 + 1], s[(n - 1) * 7 + 2], s[(n - 1) * 7 + 3]);
+  var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pts), 3));
+  var l = new THREE.Line(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: opacity })); l.userData.count = pts.length / 3; l.userData.res = res; l.userData.stride = stride; return l;
+}
+function rebuild3D() {
+  var b = bounds, rs = shot ? shot.res : plan, zr = Math.max(Math.abs(rs.minZ), Math.abs(rs.maxZ), 1);
+  var ext = Math.max(b.maxX - b.minX, b.maxY - b.minY, 2 * zr, 12); T3.ext = ext;
+  while (T3.grp.children.length) { var o = T3.grp.children.pop(); if (o.geometry) o.geometry.dispose(); }
+  var size = Math.ceil(ext * 1.6 / 10) * 10, grid = new THREE.GridHelper(size, 20, 0x87CEEB, 0x4169E1);
+  grid.position.set(b.minX + size / 2 - ext * 0.1, S.ly, 0); T3.grp.add(grid);
+  var pad = new THREE.Mesh(new THREE.CylinderGeometry(ext * 0.012, ext * 0.012, Math.max(0.01, S.h0 - S.ly), 12), new THREE.MeshStandardMaterial({ color: 0x4169E1 }));
+  pad.position.set(0, (S.h0 + S.ly) / 2, 0); T3.grp.add(pad);
+  T3.plan = lineFrom(plan, 0xffffff, 0.35); T3.grp.add(T3.plan);
+  if (compare) { T3.grp.add(lineFrom(vacRes, 0xffffff, 0.8)); }
+  trails.forEach(function (t) { T3.grp.add(lineFrom(t.res, 0x87CEEB, 0.3)); });
+  T3.live = null;
+  if (shot) { T3.live = lineFrom(shot.res, 0x87CEEB, 1); T3.grp.add(T3.live); }
+  T3.ball.scale.setScalar(ext * 0.012);
+  T3.c.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, 0); T3.dist = ext * 1.7;
+  T3.sig = (shot ? 'S' : 'P') + (shot ? shot.res.n : plan.n) + '|' + trails.length + '|' + S.h0 + '|' + S.ly;
+}
+function render3D() {
+  if (!T3.ready) return; var cv = $('#c3d'), w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w || cv.height !== h) { T3.r.setSize(w, h, false); T3.cam.aspect = w / h; T3.cam.updateProjectionMatrix(); }
+  var sig = (shot ? 'S' : 'P') + (shot ? shot.res.n : plan.n) + '|' + trails.length + '|' + S.h0 + '|' + S.ly + '|' + (shot ? shot.res.landing.x : plan.landing.x);
+  if (sig !== T3.lastSig) { T3.lastSig = sig; rebuild3D(); }
+  var rs = shot ? shot.res : plan, t = shot ? Math.min(shot.t, rs.T) : 0, st = P.sampleAt(rs, t);
+  T3.ball.position.set(st.x, st.y, st.z);
+  if (T3.live && shot) { var idx = 0, s = rs.samples; var lo = 0, hi = rs.n - 1; while (lo < hi) { var m = (lo + hi) >> 1; if (s[m * 7] < t) lo = m + 1; else hi = m; } idx = Math.min(T3.live.userData.count, Math.floor(lo / T3.live.userData.stride) + 1); T3.live.geometry.setDrawRange(0, Math.max(2, idx)); }
+  var sp = Math.sin(T3.ph), cp = Math.cos(T3.ph);
+  T3.cam.position.set(T3.c.x + T3.dist * sp * Math.sin(T3.th), T3.c.y + T3.dist * cp, T3.c.z + T3.dist * sp * Math.cos(T3.th)); T3.cam.lookAt(T3.c);
+  T3.r.render(T3.s, T3.cam);
+}
+
+/* =========================================================
+   14. MAIN LOOP
+   ========================================================= */
+var lastT = performance.now(), fN = 0, fSum = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  var raw = (now - lastT) / 1000, dt = Math.min(0.05, raw); lastT = now;
+  if (dirty) recompute();
+  if (shot && shot.playing) advance(dt * S.timeScale * (slowmo ? 0.25 : 1));
+  if (boundsDirty && !(shot && shot.playing)) { computeBounds(); boundsDirty = false; }
+  stepParticles(dt);
+  if (view3d) render3D();
+  else { var f = fit($('#sim')); lastV = drawScene(f.c, f.w, f.h); updateHandle(); }
+  updateLive();
+  var rs = shot ? shot.res : plan, tN = shot ? Math.min(shot.t, rs.T) : null;
+  drawGraph($('#g1'), rs, tN, [{ k: 'sp', col: '#87CEEB', name: 'speed' }, { k: 'vx', col: '#ffffff', name: 'vx', dash: [5, 4] }, { k: 'vy', col: '#ffb86b', name: 'vy' }], 'm/s');
+  drawGraph($('#g2'), rs, tN, [{ k: 'y', col: '#87CEEB', name: 'height' }], 'm');
+  // slow device check: after the first second, average frame time over ~2 seconds
+  if (!low && fN < 150) { fN++; if (fN > 30) fSum += raw; if (fN === 150 && fSum / 120 > 0.045) { low = true; store.set('nav-low', '1'); applyPrefs(); toast('This device looks slow, so Low-power mode was turned on. You can turn it off in Accessibility.'); } }
+}
+
+/* =========================================================
+   15. BUTTONS
+   ========================================================= */
+$('#bLaunch').addEventListener('click', function () { launch(false); });
+$('#bPause').addEventListener('click', function () {
+  if (!shot || shot.finished) return; shot.playing = !shot.playing; this.textContent = shot.playing ? 'Pause' : 'Resume';
+});
+$('#bStep').addEventListener('click', function () {
+  if (!shot || shot.finished) { launch(true); } if (!shot) return; shot.playing = false; $('#bPause').textContent = 'Resume'; advance(0.05);
+});
+$('#bReset').addEventListener('click', function () { doReset(false); toast('Reset. Trails cleared.'); });
+$('#bSlow').addEventListener('click', function () { slowmo = !slowmo; this.setAttribute('aria-pressed', String(slowmo)); });
+$('#bClear').addEventListener('click', function () { trails = []; boundsDirty = true; toast('Old trails cleared.'); });
+$('#bGhost').addEventListener('click', function () {
+  ghostOn = !ghostOn; this.setAttribute('aria-pressed', String(ghostOn));
+  if (ghostOn) { var src = shot && shot.landed ? shot : (trails.length ? { res: trails[trails.length - 1].res } : null); if (src) { ghost = { res: src.res }; toast('Last shot pinned as a ghost path.'); } else { ghost = null; toast('Fire a shot first, then press Ghost trail to pin it.'); ghostOn = false; this.setAttribute('aria-pressed', 'false'); } }
+  else ghost = null; boundsDirty = true;
+});
+$('#bBest').addEventListener('click', function () {
+  var p = cur(), best = P.findBestAngle(p);
+  if (!best) { toast('With these settings the object cannot reach the landing level at any angle.'); return; }
+  var sv = P.sanitize(p).p, theo = (!(sv.airOn && sv.rho > 0)) ? P.optimalAngleFormula(sv.v0, sv.g, sv.h0 - sv.ly) : null;
+  var m = 'Best angle: ' + fmt(best.angle, 1) + '° (range ' + fmt(best.dist, 1) + ' m).';
+  if (theo !== null) m += ' Formula: ' + fmt(theo, 1) + '°.';
+  $('#opt').textContent = m + (theo === null ? ' With air, wind or spin the best angle is usually not 45°.' : '');
+  setValue('angle', Math.round(best.angle * 10) / 10); toast(m + ' Angle set.');
+});
+$('#bView').addEventListener('click', function () {
+  if (!view3d) {
+    if (low) { toast('3D view is off in Low-power mode. Turn Low-power mode off in Accessibility to use it.'); return; }
+    if (!init3D()) { toast('3D view is not available on this device or browser.'); return; }
+  }
+  view3d = !view3d; this.setAttribute('aria-pressed', String(view3d)); this.textContent = view3d ? '2D view' : '3D view';
+  $('#sim').hidden = view3d; $('#c3d').hidden = !view3d; $('#handle').hidden = view3d; T3.lastSig = '';
+});
+$('#bTarget').addEventListener('click', function () {
+  targetMode = !targetMode; this.setAttribute('aria-pressed', String(targetMode)); $('#bNewT').hidden = !targetMode;
+  if (targetMode) newTarget(); else { target = null; boundsDirty = true; } updateScore();
+});
+$('#bNewT').addEventListener('click', function () { newTarget(); });
+$('#bSave').addEventListener('click', saveImage);
+$('#bPanel').addEventListener('click', togglePanel);
+$('#bDefaults').addEventListener('click', function () { applyMode(mode); toast('Values reset to the ' + MODES[mode - 1].name + ' mode.'); });
+$('#cAir').addEventListener('change', function () { S.airOn = this.checked; dirty = true; boundsDirty = true; syncUI(); });
+$('#cAlt').addEventListener('change', function () { S.altDensity = this.checked; dirty = true; });
+$('#cNight').addEventListener('change', function () { night = this.checked; });
+$$('[data-wd]').forEach(function (b) { b.addEventListener('click', function () { if (S.windSpeed === 0) setValue('windSpeed', 8); setValue('windDir', +b.dataset.wd); }); });
+$$('[data-vec]').forEach(function (c) { c.addEventListener('change', function () { vecs[c.dataset.vec] = c.checked; }); });
+
+function togglePanel() {
+  var small = window.matchMedia('(max-width:900px)').matches, open;
+  if (small) { open = $('#panel').classList.toggle('open'); } else { open = !$('#lab').classList.toggle('collapsed'); }
+  $('#bPanel').setAttribute('aria-expanded', String(open));
+}
+function setupPanelDefault() { if (window.matchMedia('(max-width:900px)').matches) { $('#bPanel').setAttribute('aria-expanded', 'false'); } }
+
+/* learn drawer */
+var learnOpener = null;
+function setLearn(open) {
+  var d = $('#learn'); d.classList.toggle('open', open); $('#bLearn').setAttribute('aria-expanded', String(open));
+  if (open) { learnOpener = document.activeElement; d.focus(); } else if (learnOpener) learnOpener.focus();
+}
+$('#bLearn').addEventListener('click', function () { setLearn(!$('#learn').classList.contains('open')); });
+$('#learnX').addEventListener('click', function () { setLearn(false); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('#learn').classList.contains('open')) setLearn(false); });
+
+/* save my shot: draw a shareable picture */
+function saveImage() {
+  if (!shot) { toast('Fire a shot first, then save it.'); return; }
+  var cv = document.createElement('canvas'); cv.width = 1200; cv.height = 630; var c = cv.getContext('2d');
+  drawScene(c, 1200, 630, { end: true });
+  var L = shot.res.landing, ap = shot.res.apex, p = shot.p;
+  c.fillStyle = 'rgba(5,11,36,.82)'; roundRect(c, 24, 20, 560, 128, 14); c.fill();
+  c.fillStyle = '#fff'; c.font = '800 30px system-ui,sans-serif'; c.fillText('NAVUMSHA Lab', 44, 62);
+  c.font = '20px system-ui,sans-serif'; c.fillStyle = '#87CEEB';
+  c.fillText(fmt(p.v0, 1) + ' m/s at ' + fmt(p.angle, 1) + '° from ' + fmt(p.h0, 1) + ' m · ' + (planet !== 'Custom' ? planet : 'g = ' + fmt(p.g) + ' m/s²') + (p.airOn ? ' · with air' : ' · no air'), 44, 94);
+  c.fillStyle = '#fff'; c.fillText('Range ' + fmt(L.x, 1) + ' m · Max height ' + fmt(ap.y, 1) + ' m · Time ' + fmt(L.t, 2) + ' s', 44, 124);
+  cv.toBlob(function (blob) {
+    if (!blob) { toast('Could not make the image.'); return; }
+    var file = null; try { file = new File([blob], 'navumsha-shot.png', { type: 'image/png' }); } catch (e) { }
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: 'My NAVUMSHA shot' }).catch(function () { }); return; }
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'navumsha-shot.png'; document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500); toast('Image saved as navumsha-shot.png');
+  }, 'image/png');
+}
+
+/* =========================================================
+   16. PREFERENCES BUTTONS
+   ========================================================= */
+function applyPrefs() {
+  root.classList.toggle('reduce', reduce); root.classList.toggle('lowpower', low);
+  root.style.setProperty('--scale', SCALES[scaleIdx]);
+  $('#tMotion').setAttribute('aria-pressed', String(reduce)); $('#tLow').setAttribute('aria-pressed', String(low));
+  $('#bMute').setAttribute('aria-pressed', String(muted)); $('#bMute').textContent = muted ? 'Sound off' : 'Sound on';
+  if (low && view3d) $('#bView').click();
+}
+$('#bA11y').addEventListener('click', function () { var o = $('#a11y').classList.toggle('open'); this.setAttribute('aria-expanded', String(o)); });
+$('#tMotion').addEventListener('click', function () { reduce = !reduce; store.set('nav-reduce', reduce ? '1' : '0'); applyPrefs(); });
+$('#tLow').addEventListener('click', function () { low = !low; store.set('nav-low', low ? '1' : '0'); applyPrefs(); });
+$('#tSmall').addEventListener('click', function () { scaleIdx = Math.max(0, scaleIdx - 1); store.set('nav-text', scaleIdx); applyPrefs(); });
+$('#tBig').addEventListener('click', function () { scaleIdx = Math.min(SCALES.length - 1, scaleIdx + 1); store.set('nav-text', scaleIdx); applyPrefs(); });
+$('#bMute').addEventListener('click', function () { muted = !muted; store.set('nav-mute', muted ? '1' : '0'); applyPrefs(); });
+if (mq.addEventListener) mq.addEventListener('change', function (e) { if (store.get('nav-reduce') === null) { reduce = e.matches; applyPrefs(); } });
+$('#rotX').addEventListener('click', function () { $('#rotate').classList.remove('show'); $('#rotate').hidden = true; });
+
+/* =========================================================
+   17. START
+   ========================================================= */
+buildControls(); buildTabs(); renderBadges(); applyPrefs(); setupPanelDefault();
+(function () {
+  var m = /mode=(\d)/.exec(location.hash || ''), n = m ? parseInt(m[1], 10) : 1;
+  applyMode(n >= 1 && n <= 9 ? n : 1);
+  $('#rotate').classList.add('show');
+  var st = P.selfTest ? P.selfTest() : null;
+  $('#selfTest').textContent = st ? ('Built-in engine test: ' + (st.ok ? '✓ all ' + st.results.length + ' checks passed' : '✗ some checks failed') + ' (for example vacuum, 45°, 20 m/s, flat ground, Earth gives ' + fmt(st.results[0] ? st.results[0].got : 0, 2) + ' m; formula 40.77 m).') : '';
+})();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

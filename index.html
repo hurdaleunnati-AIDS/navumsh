@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<!--
+  NAVUMSHA - Landing page (index.html)
+  -------------------------------------------------------------
+  A free, hands-on way to SEE projectile motion.
+  Plain HTML + CSS + JavaScript. Optional libraries (loaded from a CDN):
+    - Three.js  (3D title, 3D rocket, starfield)
+    - GSAP + ScrollTrigger (scroll animations)
+  If a library cannot load (offline, blocked, slow phone) the page still
+  works: it falls back to a CSS 3D title, a 2D canvas rocket and simple
+  fade-ins. Nothing on this page needs a server.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NAVUMSHA - See projectile motion come alive</title>
+<meta name="description" content="NAVUMSHA is a free, hands-on lab that lets anyone visualise projectile motion: change a number and watch the world change.">
+<meta name="theme-color" content="#060e2b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   1. THEME TOKENS  (royal blue + navy + sky blue, white text)
+   ============================================================ */
+:root{
+  --navy-950:#030818;
+  --navy-900:#060e2b;
+  --navy-800:#0b1a4d;
+  --navy-700:#13286f;
+  --royal:#4169E1;          /* main royal blue */
+  --royal-deep:#2b49b8;     /* deeper royal for gradients (keeps white text AA) */
+  --sky:#87CEEB;            /* sky blue accent */
+  --ice:#dff3ff;
+  --text:#ffffff;
+  --muted:#c6d6f7;          /* soft text, AA on navy */
+  --glass:rgba(16,34,102,.42);
+  --glass-strong:rgba(10,24,78,.72);
+  --glass-border:rgba(135,206,235,.28);
+  --radius:22px;
+  --glow:0 0 34px rgba(135,206,235,.35);
+  --font-head:"Sora","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  --font-body:"Inter","Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+  --tw:min(calc(100vw - 2.6rem),62rem);     /* width of the big title */
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;font-size:100%;-webkit-text-size-adjust:100%}
+html.reduce-motion{scroll-behavior:auto}
+body{
+  margin:0;background:radial-gradient(120% 90% at 50% -10%,#14307f 0%,var(--navy-900) 48%,var(--navy-950) 100%) fixed;
+  color:var(--text);font-family:var(--font-body);font-size:1.0625rem;line-height:1.65;
+  overflow-x:hidden;padding-bottom:calc(5.5rem + env(safe-area-inset-bottom));
+}
+h1,h2,h3{font-family:var(--font-head);line-height:1.15;margin:0}
+p{margin:0 0 1rem}
+a{color:var(--sky)}
+img,svg,canvas{max-width:100%}
+:focus-visible{outline:3px solid var(--sky);outline-offset:3px;border-radius:8px}
+.skip{position:absolute;left:1rem;top:-4rem;background:var(--sky);color:#04102e;padding:.7rem 1rem;border-radius:10px;font-weight:700;z-index:100;text-decoration:none}
+.skip:focus{top:1rem}
+.sr-only{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ============================================================
+   2. BACKGROUND LAYERS (aurora + canvases)
+   ============================================================ */
+.aurora{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.aurora i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;filter:blur(70px);opacity:.38;mix-blend-mode:screen;animation:drift 26s ease-in-out infinite alternate}
+.aurora i:nth-child(1){background:radial-gradient(circle,#4169E1 0%,transparent 62%);left:-25vmax;top:-20vmax}
+.aurora i:nth-child(2){background:radial-gradient(circle,#87CEEB 0%,transparent 62%);right:-30vmax;top:25vh;opacity:.22;animation-duration:32s}
+.aurora i:nth-child(3){background:radial-gradient(circle,#1d3fb8 0%,transparent 62%);left:10vmax;bottom:-35vmax;animation-duration:38s}
+@keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(6vmax,4vmax,0) scale(1.12)}}
+#bgGL,#bg2D{position:fixed;inset:0;width:100vw;height:100vh;z-index:1;pointer-events:none;display:none}
+html.gl-on #bgGL{display:block}
+html.fallback-on #bg2D{display:block}
+
+/* ============================================================
+   3. NAVIGATION
+   ============================================================ */
+.nav{position:sticky;top:0;z-index:50;background:linear-gradient(180deg,rgba(3,8,24,.86),rgba(3,8,24,.55));backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--glass-border)}
+.nav-in{max-width:1320px;margin:auto;display:flex;align-items:center;gap:1rem;padding:.6rem 1rem}
+.brand{font-family:var(--font-head);font-weight:800;letter-spacing:.14em;color:#fff;text-decoration:none;display:flex;align-items:center;gap:.55rem;font-size:1.05rem}
+.brand svg{width:26px;height:26px;color:var(--sky)}
+.menu-btn{margin-left:auto;display:none}
+.nav-links{display:flex;align-items:center;gap:.35rem;margin-left:auto;flex-wrap:wrap}
+.nav-links a.lnk{color:var(--muted);text-decoration:none;padding:.45rem .7rem;border-radius:999px;font-size:.95rem;font-weight:500}
+.nav-links a.lnk:hover{color:#fff;background:rgba(135,206,235,.14)}
+.tools{display:flex;align-items:center;gap:.4rem;margin-left:.4rem;padding-left:.6rem;border-left:1px solid var(--glass-border)}
+.tbtn{min-width:44px;min-height:44px;padding:.35rem .7rem;border-radius:12px;border:1px solid var(--glass-border);background:var(--glass);color:#fff;font:600 .85rem var(--font-body);cursor:pointer}
+.tbtn:hover{background:rgba(135,206,235,.2)}
+.tbtn[aria-pressed="true"]{background:var(--royal);border-color:var(--sky)}
+.nav-launch{background:linear-gradient(135deg,var(--royal),var(--royal-deep));color:#fff!important;font-weight:700;border:1px solid var(--sky);padding:.55rem 1rem!important}
+@media (max-width:1120px){
+  .menu-btn{display:inline-flex;align-items:center;justify-content:center}
+  .nav-links{display:none;position:absolute;left:0;right:0;top:100%;flex-direction:column;align-items:stretch;background:var(--glass-strong);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);padding:.8rem 1rem 1rem;margin:0;border-bottom:1px solid var(--glass-border)}
+  .nav-links.open{display:flex}
+  .nav-links a.lnk{padding:.8rem 1rem}
+  .tools{margin:.4rem 0 0;padding:.6rem 0 0;border-left:0;border-top:1px solid var(--glass-border);flex-wrap:wrap}
+}
+
+/* ============================================================
+   4. LAYOUT HELPERS, BUTTONS, GLASS CARDS
+   ============================================================ */
+main{position:relative;z-index:5}
+.wrap{max-width:1120px;margin:auto;padding:0 1.1rem}
+section{position:relative;padding:clamp(4rem,10vw,7.5rem) 0}
+.eyebrow{display:inline-block;color:var(--sky);font:700 .8rem var(--font-head);letter-spacing:.22em;text-transform:uppercase;margin-bottom:.8rem}
+h2{font-size:clamp(1.9rem,4.6vw,3.1rem);margin-bottom:1rem;text-wrap:balance}
+.lead{font-size:clamp(1.05rem,2vw,1.28rem);color:var(--muted);max-width:46rem}
+.glass{background:var(--glass);border:1px solid var(--glass-border);border-radius:var(--radius);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 18px 50px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.6rem;min-height:48px;padding:.8rem 1.5rem;border-radius:999px;border:1px solid transparent;font:700 1rem var(--font-head);text-decoration:none;cursor:pointer;color:#fff;transition:transform .2s,box-shadow .2s,background .2s}
+.btn svg{width:22px;height:22px}
+.btn-primary{background:linear-gradient(135deg,var(--royal),var(--royal-deep));border-color:var(--sky);box-shadow:var(--glow)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 0 46px rgba(135,206,235,.6)}
+.btn-ghost{background:rgba(255,255,255,.06);border-color:var(--glass-border)}
+.btn-ghost:hover{background:rgba(135,206,235,.18)}
+.grid{display:grid;gap:1.1rem}
+.cards-8{grid-template-columns:repeat(auto-fit,minmax(15.5rem,1fr))}
+.cards-4{grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))}
+.card{padding:1.4rem 1.4rem 1.5rem;transition:transform .25s,border-color .25s}
+.card:hover{transform:translateY(-4px);border-color:rgba(135,206,235,.7)}
+.card .num{font:800 .85rem var(--font-head);color:var(--sky);letter-spacing:.18em}
+.card h3{font-size:1.2rem;margin:.35rem 0 .5rem}
+.card p{color:var(--muted);font-size:.98rem;margin:0}
+.card a.go{display:inline-block;margin-top:.8rem;font-weight:600;text-decoration:none}
+.card a.go:hover{text-decoration:underline}
+.chips{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.4rem}
+.chip{padding:.45rem .95rem;border-radius:999px;background:rgba(135,206,235,.12);border:1px solid var(--glass-border);font-size:.92rem;color:var(--ice)}
+
+/* Reveal-on-scroll (only hidden when JS is running) */
+.js [data-reveal]{opacity:0}
+.js [data-reveal].in{opacity:1;transform:none;transition:opacity 1s ease,transform 1s ease}
+.js [data-reveal]:not(.in){transform:translateY(34px)}
+.reduce-motion [data-reveal]:not(.in){transform:none}
+.reduce-motion [data-reveal].in{transition:opacity .01s}
+
+/* ============================================================
+   5. HERO
+   ============================================================ */
+#hero{min-height:calc(100vh - 62px);min-height:calc(100svh - 62px);display:flex;align-items:center;justify-content:center;text-align:center;padding:2rem 0 4rem}
+.hero-in{display:flex;flex-direction:column;align-items:center;gap:1.4rem}
+.title-stage{perspective:900px;width:var(--tw);height:calc(var(--tw)/4)}
+.title-3d{width:100%;height:100%;transform-style:preserve-3d;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+h1.title{margin:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;white-space:nowrap;
+  font-size:calc(var(--tw)/7.2);font-weight:800;letter-spacing:.05em;
+  background:linear-gradient(180deg,#fff 10%,var(--sky) 60%,var(--royal) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 0 0 transparent;filter:drop-shadow(0 0 18px rgba(135,206,235,.65)) drop-shadow(0 6px 0 rgba(19,40,111,.9)) drop-shadow(0 12px 0 rgba(11,26,77,.9))}
+html.gl-on h1.title{opacity:0}   /* the 3D title is drawn by Three.js; the h1 stays for screen readers + layout */
+.tagline{font-size:clamp(1.1rem,2.6vw,1.6rem);color:var(--ice);max-width:40rem;margin:0}
+.hero-cta{display:flex;flex-wrap:wrap;gap:.9rem;justify-content:center}
+.scroll-cue{margin-top:1rem;color:var(--muted);font-size:.9rem;display:flex;flex-direction:column;align-items:center;gap:.4rem}
+.scroll-cue span{width:22px;height:36px;border:2px solid var(--sky);border-radius:14px;position:relative}
+.scroll-cue span::after{content:"";position:absolute;left:50%;top:6px;width:4px;height:8px;margin-left:-2px;border-radius:3px;background:var(--sky);animation:cue 1.8s infinite}
+@keyframes cue{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(14px)}}
+
+/* ============================================================
+   6. SECTION CONTENT
+   ============================================================ */
+.two-col{display:grid;grid-template-columns:1.05fr .95fr;gap:2rem;align-items:center}
+@media (max-width:860px){.two-col{grid-template-columns:1fr}}
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-top:1.6rem}
+.stat{padding:1rem .6rem;text-align:center}
+.stat b{display:block;font:800 1.9rem var(--font-head);color:#fff}
+.stat small{color:var(--muted);font-size:.85rem}
+
+/* live mini demo */
+.demo{padding:1.1rem}
+.demo canvas{width:100%;height:auto;aspect-ratio:16/10;border-radius:16px;background:linear-gradient(180deg,#0b1f63,#071340);display:block}
+.demo .ctl{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.7rem;margin-top:.8rem;font-size:.95rem}
+.demo label{color:var(--ice);font-weight:600}
+.demo output{font-variant-numeric:tabular-nums;min-width:5.5ch;text-align:right;font-weight:700}
+.demo select{min-height:44px;background:var(--navy-800);color:#fff;border:1px solid var(--glass-border);border-radius:10px;padding:.3rem .6rem;font:inherit}
+.demo .read{margin-top:.8rem;color:var(--ice);font-size:.98rem}
+input[type=range]{width:100%;accent-color:var(--royal);height:28px}
+
+.how-list{display:grid;gap:1rem;margin-top:1.6rem}
+.how-list .item{display:flex;gap:1rem;padding:1.1rem 1.2rem}
+.how-list .ic{flex:0 0 46px;height:46px;border-radius:14px;background:linear-gradient(135deg,var(--royal),var(--royal-deep));display:grid;place-items:center;font:800 1.1rem var(--font-head);border:1px solid var(--sky)}
+.how-list h3{font-size:1.1rem;margin-bottom:.2rem}
+.how-list p{margin:0;color:var(--muted);font-size:.98rem}
+
+/* quotes */
+.quote-gap{padding:clamp(3rem,8vw,5.5rem) 0}
+.qcard{max-width:46rem;margin:auto;padding:2rem 1.6rem;text-align:center}
+.qcard blockquote{margin:0}
+.qcard p.q{font:600 clamp(1.25rem,3vw,1.85rem)/1.4 var(--font-head);margin:0 0 1rem;text-wrap:balance}
+.qcard p.q::before{content:"\201C";color:var(--sky)} .qcard p.q::after{content:"\201D";color:var(--sky)}
+.qcard footer,.qcard cite{font-style:normal;color:var(--muted);font-size:.95rem}
+.qcard .own{color:var(--sky);font-weight:700;letter-spacing:.12em}
+.js .quote-gap [data-reveal]{transition-duration:2.4s}
+.js .quote-gap [data-reveal].in{transition:opacity 2.4s ease,transform 2.4s ease}
+.rotator{position:relative;min-height:15rem;max-width:46rem;margin:2rem auto 0}
+.rotator .qcard{position:absolute;inset:0;margin:0;display:flex;align-items:center;justify-content:center;opacity:0;visibility:hidden;transition:opacity 2.4s ease,visibility 0s linear 2.4s}
+.rotator .qcard.active{opacity:1;visibility:visible;transition:opacity 2.4s ease,visibility 0s}
+.rotator .qcard>div{width:100%}
+.dots{display:flex;justify-content:center;gap:.5rem;margin-top:1rem}
+.dots button{width:44px;height:44px;background:none;border:0;cursor:pointer;display:grid;place-items:center}
+.dots button i{width:12px;height:12px;border-radius:50%;background:rgba(135,206,235,.35);border:1px solid var(--sky);display:block}
+.dots button[aria-current="true"] i{background:var(--sky)}
+@media (max-width:560px){.rotator{min-height:21rem}}
+.reduce-motion .rotator{min-height:0}
+.reduce-motion .rotator .qcard{position:static;opacity:1;visibility:visible;margin-bottom:1rem;transition:none}
+.reduce-motion .dots{display:none}
+
+/* footer + sticky launch button */
+footer.site{position:relative;z-index:5;padding:3rem 0 2rem;text-align:center;color:var(--muted);font-size:.92rem;border-top:1px solid var(--glass-border);background:linear-gradient(180deg,transparent,rgba(3,8,24,.7))}
+footer.site p{max-width:46rem;margin:0 auto .8rem}
+.sticky-launch{position:fixed;left:50%;bottom:calc(.9rem + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60}
+.sticky-launch .btn{white-space:nowrap;padding:.9rem 1.8rem;font-size:1.05rem;box-shadow:0 10px 40px rgba(0,0,0,.5),0 0 40px rgba(65,105,225,.8)}
+.sticky-launch .btn::before{content:"";position:absolute;inset:-4px;border-radius:999px;border:2px solid var(--sky);opacity:.0;animation:pulse 2.6s infinite}
+.sticky-launch .btn{position:relative}
+@keyframes pulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.25)}}
+.reduce-motion .sticky-launch .btn::before,.reduce-motion .scroll-cue span::after,.reduce-motion .aurora i{animation:none}
+
+/* rocket-launch page transition */
+#launchFx{position:fixed;inset:0;z-index:200;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 100%,#fff 0%,var(--sky) 18%,var(--royal) 45%,var(--navy-900) 80%)}
+#launchFx svg{position:absolute;left:50%;bottom:-120px;width:90px;height:90px;margin-left:-45px;color:#fff;filter:drop-shadow(0 0 24px #fff)}
+#launchFx.go{opacity:1;transition:opacity .6s ease .25s}
+#launchFx.go svg{animation:rise .95s cubic-bezier(.5,0,.9,.4) forwards}
+@keyframes rise{to{transform:translateY(-135vh) scale(1.6)}}
+
+/* rotate hint is only used on the lab page; kept out of here */
+@media (prefers-reduced-motion:reduce){
+  .aurora i,.scroll-cue span::after,.sticky-launch .btn::before{animation:none}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+
+<body>
+<a class="skip" href="#main">Skip to the main content</a>
+
+<!-- Icon sprite (simple rocket drawn with basic shapes) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-rocket" viewBox="0 0 24 24">
+    <path d="M12 1.5c3.4 2.6 5 6.3 5 10.5v4.2H7V12c0-4.2 1.6-7.9 5-10.5z" fill="currentColor"/>
+    <circle cx="12" cy="9.5" r="1.9" fill="#0b1a4d"/>
+    <path d="M7 12.5 3.6 17.2l3.4-.6zM17 12.5l3.4 4.7-3.4-.6z" fill="currentColor" opacity=".85"/>
+    <path d="M9.5 17.2h5L12 22.5z" fill="#87CEEB"/>
+  </symbol>
+</svg>
+
+<noscript>
+  <p style="position:relative;z-index:9;margin:0;padding:1rem;background:#13286f;color:#fff;text-align:center">
+    NAVUMSHA needs JavaScript to draw the simulations. Please turn it on in your browser.
+  </p>
+</noscript>
+
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+<canvas id="bgGL" aria-hidden="true"></canvas>
+<canvas id="bg2D" aria-hidden="true"></canvas>
+<div id="launchFx" aria-hidden="true"><svg><use href="#i-rocket"/></svg></div>
+
+<!-- ============================ NAVIGATION ============================ -->
+<header class="nav">
+  <div class="nav-in">
+    <a class="brand" href="#top" aria-label="NAVUMSHA home"><svg aria-hidden="true"><use href="#i-rocket"/></svg>NAVUMSHA</a>
+    <button class="tbtn menu-btn" id="menuBtn" aria-expanded="false" aria-controls="navLinks">Menu</button>
+    <nav class="nav-links" id="navLinks" aria-label="Main menu">
+      <a class="lnk" href="#what">What it is</a>
+      <a class="lnk" href="#how">How it helps</a>
+      <a class="lnk" href="#explore">Explore</a>
+      <a class="lnk" href="#who">Who it is for</a>
+      <a class="lnk" href="#quotes">Quotes</a>
+      <a class="lnk nav-launch" href="lab.html" data-launch>Launch the Lab</a>
+      <div class="tools" role="group" aria-label="Display settings">
+        <button class="tbtn" id="fsDown" aria-label="Make text smaller">A-</button>
+        <button class="tbtn" id="fsUp" aria-label="Make text bigger">A+</button>
+        <button class="tbtn" id="reduceBtn" aria-pressed="false">Reduce motion</button>
+        <button class="tbtn" id="lowBtn" aria-pressed="false" title="Turns off 3D effects on slow devices">Low power</button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+<!-- ============================ HERO ============================ -->
+<section id="hero" aria-labelledby="siteTitle">
+  <div class="wrap hero-in" id="top">
+    <div class="title-stage" id="titleStage">
+      <div class="title-3d" id="title3d"><h1 class="title" id="siteTitle">NAVUMSHA</h1></div>
+    </div>
+    <p class="tagline">Change a number. Watch the world change. A free lab where you can see how things fly.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="lab.html" data-launch><svg aria-hidden="true"><use href="#i-rocket"/></svg>Launch the Lab</a>
+      <a class="btn btn-ghost" href="#what">Learn more</a>
+    </div>
+    <div class="scroll-cue" aria-hidden="true"><span></span>Scroll down and follow the rocket</div>
+  </div>
+</section>
+
+<!-- ============================ 1. WHAT IT IS ============================ -->
+<section id="what" aria-labelledby="whatH">
+  <div class="wrap two-col">
+    <div data-reveal>
+      <span class="eyebrow">What NAVUMSHA is</span>
+      <h2 id="whatH">A playground for things that fly</h2>
+      <p class="lead">When you throw a ball, kick a football or fire a cannon, the object follows a curved path. That path is called <strong>projectile motion</strong>. NAVUMSHA lets you build that path yourself, then look inside it.</p>
+      <p class="lead">Pick a speed, an angle and a planet. Press launch. Watch the numbers, the arrows and the graphs, and see exactly why the object went where it did.</p>
+      <div class="chips" aria-label="Highlights">
+        <span class="chip">Free to use</span><span class="chip">No sign-up</span><span class="chip">Works on phones</span><span class="chip">SI units everywhere</span>
+      </div>
+    </div>
+    <div class="glass stat-row" data-reveal style="padding:1.2rem;margin:0">
+      <div class="stat"><b>8</b><small>projectile modes</small></div>
+      <div class="stat"><b>12</b><small>live controls</small></div>
+      <div class="stat"><b>5</b><small>worlds to try</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- Quote interlude 1 -->
+<div class="quote-gap"><div class="wrap">
+  <figure class="glass qcard" data-reveal style="margin:auto">
+    <blockquote><p class="q">If I have seen further it is by standing on the shoulders of Giants.</p></blockquote>
+    <figcaption><cite>Isaac Newton, in a letter to Robert Hooke, 1675</cite></figcaption>
+  </figure>
+</div></div>
+
+<!-- ============================ 2. HOW IT HELPS ============================ -->
+<section id="how" aria-labelledby="howH">
+  <div class="wrap two-col">
+    <div data-reveal>
+      <span class="eyebrow">How it helps you see physics</span>
+      <h2 id="howH">Change a number, watch the world change</h2>
+      <p class="lead">Formulas feel far away until you can move them. Try it here: drag the sliders and the path redraws at once.</p>
+      <div class="how-list">
+        <div class="glass item"><div class="ic" aria-hidden="true">1</div><div><h3>Numbers become arrows</h3><p>See speed, gravity, air push and spin as arrows on the moving object.</p></div></div>
+        <div class="glass item"><div class="ic" aria-hidden="true">2</div><div><h3>Compare worlds</h3><p>Fly the same shot on Earth, the Moon or Mars, or with and without air.</p></div></div>
+        <div class="glass item"><div class="ic" aria-hidden="true">3</div><div><h3>Ask "why?"</h3><p>After every shot, a short plain-English note explains what happened.</p></div></div>
+      </div>
+    </div>
+    <div class="glass demo" data-reveal>
+      <canvas id="demo" width="640" height="400" role="img" aria-label="A curved path drawn for the speed and angle chosen with the sliders"></canvas>
+      <div class="ctl"><label for="dSpeed">Speed</label><input id="dSpeed" type="range" min="5" max="60" step="1" value="25"><output id="oSpeed" for="dSpeed">25 m/s</output></div>
+      <div class="ctl"><label for="dAngle">Angle</label><input id="dAngle" type="range" min="5" max="85" step="1" value="45"><output id="oAngle" for="dAngle">45°</output></div>
+      <div class="ctl"><label for="dWorld">World</label>
+        <select id="dWorld"><option value="9.81">Earth (9.81 m/s²)</option><option value="1.62">Moon (1.62 m/s²)</option><option value="3.71">Mars (3.71 m/s²)</option><option value="24.79">Jupiter (24.79 m/s²)</option></select><span></span></div>
+      <p class="read" id="demoRead" aria-live="polite"></p>
+    </div>
+  </div>
+</section>
+
+<!-- Quote interlude 2 -->
+<div class="quote-gap"><div class="wrap">
+  <figure class="glass qcard" data-reveal>
+    <blockquote><p class="q">The first principle is that you must not fool yourself, and you are the easiest person to fool.</p></blockquote>
+    <figcaption><cite>Richard Feynman, "Cargo Cult Science", Caltech address, 1974</cite></figcaption>
+  </figure>
+</div></div>
+
+<!-- ============================ 3. WHAT YOU CAN EXPLORE ============================ -->
+<section id="explore" aria-labelledby="exploreH">
+  <div class="wrap">
+    <div data-reveal>
+      <span class="eyebrow">What you can explore</span>
+      <h2 id="exploreH">Eight ways to throw the world</h2>
+      <p class="lead">Each mode sets up a new idea. You can still change every slider afterwards.</p>
+    </div>
+    <div class="grid cards-8" style="margin-top:2rem">
+      <article class="glass card" data-reveal><span class="num">MODE 1</span><h3>Ideal (no air)</h3><p>The classic textbook parabola. Only gravity acts. See why 45° gives the longest range on flat ground.</p><a class="go" href="lab.html#mode=ideal">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 2</span><h3>Horizontal launch from a cliff</h3><p>Fire straight out and watch gravity pull the path down while the sideways speed stays the same.</p><a class="go" href="lab.html#mode=cliff">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 3</span><h3>Launch from a height</h3><p>Start high and the best angle drops below 45°. Find out how much.</p><a class="go" href="lab.html#mode=height">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 4</span><h3>Raised or lower landing level</h3><p>Aim onto a platform above you or a pit below you, and see how the best angle moves.</p><a class="go" href="lab.html#mode=level">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 5</span><h3>Air resistance</h3><p>Add drag. The path is no longer a parabola and the range shrinks a lot at high speed.</p><a class="go" href="lab.html#mode=air">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 6</span><h3>Wind</h3><p>Choose speed and direction. A tailwind helps, a headwind hurts, a crosswind pushes you off line.</p><a class="go" href="lab.html#mode=wind">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 7</span><h3>Spin and the Magnus effect</h3><p>Backspin lifts, topspin dives, sidespin curves. Spin a golf ball or a football and see it bend.</p><a class="go" href="lab.html#mode=spin">Try it in the lab</a></article>
+      <article class="glass card" data-reveal><span class="num">MODE 8</span><h3>Other planets</h3><p>Moon, Mars, Venus and Jupiter. Same throw, very different flight.</p><a class="go" href="lab.html#mode=planets">Try it in the lab</a></article>
+    </div>
+    <p class="lead" style="margin-top:1.4rem" data-reveal>Bonus: a <strong>Compare Vacuum vs Real Air</strong> mode draws both paths together, plus target practice, a best-angle finder and a ghost trail to compare shots.</p>
+  </div>
+</section>
+
+<!-- Quote interlude 3 -->
+<div class="quote-gap"><div class="wrap">
+  <figure class="glass qcard" data-reveal>
+    <blockquote><p class="q">Earth is the cradle of humanity, but one cannot live in a cradle forever.</p></blockquote>
+    <figcaption><cite>Konstantin Tsiolkovsky, in a letter, 1911</cite></figcaption>
+  </figure>
+</div></div>
+
+<!-- ============================ 4. WHO IT IS FOR ============================ -->
+<section id="who" aria-labelledby="whoH">
+  <div class="wrap">
+    <div data-reveal>
+      <span class="eyebrow">Who it is for</span>
+      <h2 id="whoH">Made for every curious mind</h2>
+    </div>
+    <div class="grid cards-4" style="margin-top:2rem">
+      <article class="glass card" data-reveal><h3>School students</h3><p>Check homework answers, see what g really does, and learn the ideas before the algebra.</p></article>
+      <article class="glass card" data-reveal><h3>College students</h3><p>Explore drag, the Magnus force and numerical integration with real controls and real units.</p></article>
+      <article class="glass card" data-reveal><h3>Teachers</h3><p>Use it live in class. Change one number, ask "what will happen?", then press launch.</p></article>
+      <article class="glass card" data-reveal><h3>Curious minds</h3><p>Ever wondered why a golf ball hooks or a cricket ball dips? Play and find out.</p></article>
+    </div>
+  </div>
+</section>
+
+<!-- Quote interlude 4 -->
+<div class="quote-gap"><div class="wrap">
+  <figure class="glass qcard" data-reveal>
+    <blockquote><p class="q">Extraordinary claims require extraordinary evidence.</p></blockquote>
+    <figcaption><cite>Carl Sagan, <i>Cosmos</i>, 1980</cite></figcaption>
+  </figure>
+</div></div>
+
+<!-- ============================ 5. QUOTES ============================ -->
+<section id="quotes" aria-labelledby="quotesH">
+  <div class="wrap">
+    <div data-reveal style="text-align:center">
+      <span class="eyebrow">Science and life quotes</span>
+      <h2 id="quotesH">Words to keep you curious</h2>
+    </div>
+    <div class="rotator" id="rotator" data-reveal>
+      <figure class="glass qcard active"><div>
+        <blockquote><p class="q">Imagination is more important than knowledge.</p></blockquote>
+        <figcaption><cite>Albert Einstein, interview in The Saturday Evening Post, 1929</cite></figcaption></div></figure>
+      <figure class="glass qcard"><div>
+        <blockquote><p class="q">The important thing is not to stop questioning. Curiosity has its own reason for existence.</p></blockquote>
+        <figcaption><cite>Albert Einstein, recorded in LIFE magazine, 2 May 1955</cite></figcaption></div></figure>
+      <figure class="glass qcard"><div>
+        <blockquote><p class="q">Change one number. Watch a whole world move.</p></blockquote>
+        <figcaption><span class="own">NAVUMSHA</span></figcaption></div></figure>
+      <figure class="glass qcard"><div>
+        <blockquote><p class="q">Every curve is a conversation between speed and gravity.</p></blockquote>
+        <figcaption><span class="own">NAVUMSHA</span></figcaption></div></figure>
+    </div>
+    <div class="dots" id="dots" role="group" aria-label="Choose a quote"></div>
+    <p style="text-align:center;margin-top:2.2rem" data-reveal><a class="btn btn-primary" href="lab.html" data-launch><svg aria-hidden="true"><use href="#i-rocket"/></svg>Launch the Lab</a></p>
+  </div>
+</section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <p><strong>NAVUMSHA</strong> - a free lab for seeing projectile motion. All values use SI units: metres (m), seconds (s), kilograms (kg), newtons (N) and joules (J).</p>
+    <p>Quotes come from their original sources. Lines marked "NAVUMSHA" are our own.</p>
+    <p><a href="lab.html" data-launch>Open the Lab</a> &middot; <a href="#top">Back to top</a></p>
+  </div>
+</footer>
+
+<!-- Sticky bottom button -->
+<div class="sticky-launch"><a class="btn btn-primary" href="lab.html" data-launch aria-label="Launch the Lab"><svg aria-hidden="true"><use href="#i-rocket"/></svg>Launch the Lab</a></div>
+
+<!-- Libraries (optional - the page works without them) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js" defer></script>
+
+<script defer>
+/* ==================================================================
+   NAVUMSHA landing page script
+   Sections:  A) settings   B) menu   C) reveal animations   D) quotes
+              E) mini demo  F) rocket path + renderers (3D / 2D)
+              G) launch transition
+   ================================================================== */
+window.addEventListener('DOMContentLoaded', function () {
+'use strict';
+
+var $  = function (s, r) { return (r || document).querySelector(s); };
+var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+var root = document.documentElement;
+var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
+var lerp  = function (a, b, t) { return a + (b - a) * t; };
+
+/* ---------- A) SETTINGS (saved in the browser; safe if storage is blocked) ---------- */
+var store = {
+  get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+var sysReduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+function slowDevice() {
+  return (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2) ||
+         (navigator.deviceMemory && navigator.deviceMemory <= 2);
+}
+var prefs = {
+  reduce: store.get('nv_reduce') === null ? !!sysReduce.matches : store.get('nv_reduce') === '1',
+  low:    store.get('nv_low')    === null ? !!slowDevice()       : store.get('nv_low') === '1',
+  fs:     clamp(parseInt(store.get('nv_fs') || '100', 10) || 100, 85, 150)
+};
+var reduceBtn = $('#reduceBtn'), lowBtn = $('#lowBtn');
+
+function applyPrefs() {
+  root.classList.toggle('reduce-motion', prefs.reduce);
+  root.classList.toggle('low-power', prefs.low);
+  root.style.fontSize = prefs.fs + '%';
+  reduceBtn.setAttribute('aria-pressed', String(prefs.reduce));
+  lowBtn.setAttribute('aria-pressed', String(prefs.low));
+  if (visuals) visuals.refresh();
+}
+reduceBtn.addEventListener('click', function () { prefs.reduce = !prefs.reduce; store.set('nv_reduce', prefs.reduce ? '1' : '0'); applyPrefs(); setupQuotes(); });
+lowBtn.addEventListener('click',    function () { prefs.low = !prefs.low; store.set('nv_low', prefs.low ? '1' : '0'); applyPrefs(); });
+$('#fsUp').addEventListener('click',   function () { prefs.fs = clamp(prefs.fs + 10, 85, 150); store.set('nv_fs', prefs.fs); applyPrefs(); });
+$('#fsDown').addEventListener('click', function () { prefs.fs = clamp(prefs.fs - 10, 85, 150); store.set('nv_fs', prefs.fs); applyPrefs(); });
+if (sysReduce.addEventListener) sysReduce.addEventListener('change', function (e) {
+  if (store.get('nv_reduce') === null) { prefs.reduce = e.matches; applyPrefs(); setupQuotes(); }
+});
+
+/* ---------- B) MENU (phones) ---------- */
+var menuBtn = $('#menuBtn'), navLinks = $('#navLinks');
+menuBtn.addEventListener('click', function () {
+  var open = navLinks.classList.toggle('open');
+  menuBtn.setAttribute('aria-expanded', String(open));
+});
+$$('#navLinks a').forEach(function (a) { a.addEventListener('click', function () { navLinks.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); }); });
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { navLinks.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); } });
+
+/* ---------- C) REVEAL ANIMATIONS (GSAP ScrollTrigger if present, else IntersectionObserver) ---------- */
+var haveGSAP = !!(window.gsap && window.ScrollTrigger);
+if (haveGSAP) { try { gsap.registerPlugin(ScrollTrigger); } catch (e) { haveGSAP = false; } }
+
+function reveal(el) { el.classList.add('in'); }
+(function setupReveal() {
+  var items = $$('[data-reveal]');
+  root.classList.add('js');            // from now on, [data-reveal] items start hidden and fade in
+  if (haveGSAP && !prefs.reduce) {
+    items.forEach(function (el) {
+      ScrollTrigger.create({ trigger: el, start: 'top 88%', once: true, onEnter: function () { reveal(el); } });
+    });
+    // gentle parallax: hero content drifts up as you scroll, and section headings drift slightly slower than the page
+    gsap.to('.hero-in', { yPercent: -14, ease: 'none', scrollTrigger: { trigger: '#hero', start: 'top top', end: 'bottom top', scrub: 0.5 } });
+    $$('section .eyebrow').forEach(function (el) {
+      gsap.fromTo(el, { y: 18 }, { y: -18, ease: 'none', scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: 0.6 } });
+    });
+    // safety net: make sure anything already on screen is visible
+    setTimeout(function () { items.forEach(function (el) { var r = el.getBoundingClientRect(); if (r.top < innerHeight && !el.classList.contains('in')) reveal(el); }); }, 1200);
+  } else if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) { if (en.isIntersecting) { reveal(en.target); io.unobserve(en.target); } });
+    }, { threshold: 0.12 });
+    items.forEach(function (el) { io.observe(el); });
+  } else { items.forEach(reveal); }
+})();
+
+/* ---------- D) QUOTE ROTATOR (slow cross-fade; all quotes shown at once with Reduce motion) ---------- */
+var rotTimer = null, rotIndex = 0;
+function setupQuotes() {
+  var cards = $$('#rotator .qcard'), dots = $('#dots');
+  dots.innerHTML = '';
+  clearInterval(rotTimer);
+  if (prefs.reduce) { cards.forEach(function (c) { c.classList.add('active'); }); return; }
+  cards.forEach(function (c, i) { c.classList.toggle('active', i === rotIndex); });
+  cards.forEach(function (c, i) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-label', 'Show quote ' + (i + 1) + ' of ' + cards.length);
+    b.innerHTML = '<i></i>'; b.setAttribute('aria-current', String(i === rotIndex));
+    b.addEventListener('click', function () { show(i); start(); });
+    dots.appendChild(b);
+  });
+  function show(i) {
+    rotIndex = i;
+    cards.forEach(function (c, k) { c.classList.toggle('active', k === i); });
+    $$('button', dots).forEach(function (b, k) { b.setAttribute('aria-current', String(k === i)); });
+  }
+  function start() { clearInterval(rotTimer); rotTimer = setInterval(function () { show((rotIndex + 1) % cards.length); }, 7500); }
+  start();
+  var rot = $('#rotator');
+  rot.onmouseenter = function () { clearInterval(rotTimer); };
+  rot.onmouseleave = start;
+}
+
+/* ---------- E) MINI DEMO: ideal projectile on flat ground (exact formulas) ---------- */
+(function demo() {
+  var cv = $('#demo'), cx = cv.getContext('2d');
+  var sp = $('#dSpeed'), an = $('#dAngle'), wd = $('#dWorld');
+  var t0 = performance.now();
+
+  function calc(v, deg, g) {
+    var th = deg * Math.PI / 180;
+    return { R: v * v * Math.sin(2 * th) / g,                 // range on flat ground, no air
+             H: Math.pow(v * Math.sin(th), 2) / (2 * g),      // maximum height
+             T: 2 * v * Math.sin(th) / g };                   // time of flight
+  }
+  function draw(now) {
+    var v = +sp.value, deg = +an.value, g = +wd.value;
+    var W = cv.width, H = cv.height, pad = 36;
+    var r = calc(v, deg, g), r45 = calc(v, 45, g);
+    var worldW = Math.max(r.R, r45.R) * 1.08, worldH = Math.max(r.H, r45.H) * 1.25;
+    var s = Math.min((W - 2 * pad) / worldW, (H - 2 * pad) / worldH);   // same scale on both axes
+    var X = function (x) { return pad + x * s; }, Y = function (y) { return H - pad - y * s; };
+    cx.clearRect(0, 0, W, H);
+    // ground
+    cx.fillStyle = 'rgba(135,206,235,.18)'; cx.fillRect(0, H - pad, W, pad);
+    cx.strokeStyle = '#87CEEB'; cx.lineWidth = 2; cx.beginPath(); cx.moveTo(0, H - pad); cx.lineTo(W, H - pad); cx.stroke();
+    // reference 45 degree path (dashed)
+    function path(vv, dd, dash, col, lw) {
+      var th = dd * Math.PI / 180, T = 2 * vv * Math.sin(th) / g;
+      cx.setLineDash(dash); cx.strokeStyle = col; cx.lineWidth = lw; cx.beginPath();
+      for (var i = 0; i <= 80; i++) { var t = T * i / 80; var x = vv * Math.cos(th) * t, y = vv * Math.sin(th) * t - 0.5 * g * t * t; (i ? cx.lineTo : cx.moveTo).call(cx, X(x), Y(Math.max(0, y))); }
+      cx.stroke(); cx.setLineDash([]);
+    }
+    if (Math.abs(deg - 45) > 0.5) path(v, 45, [8, 8], 'rgba(255,255,255,.45)', 2);
+    cx.shadowColor = '#87CEEB'; cx.shadowBlur = prefs.low ? 0 : 14;
+    path(v, deg, [], '#bfe9ff', 4); cx.shadowBlur = 0;
+    // landing marker
+    cx.fillStyle = '#fff'; cx.beginPath(); cx.arc(X(r.R), Y(0), 6, 0, 7); cx.fill();
+    // moving ball
+    var th = deg * Math.PI / 180, T = Math.max(r.T, 0.001);
+    var tt = prefs.reduce ? T * 0.5 : (((now - t0) / 1000) % (T + 0.8));
+    if (tt > T) tt = T;
+    var bx = v * Math.cos(th) * tt, by = Math.max(0, v * Math.sin(th) * tt - 0.5 * g * tt * tt);
+    cx.fillStyle = '#4169E1'; cx.strokeStyle = '#fff'; cx.lineWidth = 3;
+    cx.beginPath(); cx.arc(X(bx), Y(by), 10, 0, 7); cx.fill(); cx.stroke();
+    // labels
+    cx.fillStyle = '#fff'; cx.font = '600 15px Inter, system-ui, sans-serif';
+    cx.fillText('Range ' + r.R.toFixed(1) + ' m', Math.min(X(r.R) - 40, W - 130), H - pad + 24);
+    cx.fillText('Peak ' + r.H.toFixed(1) + ' m', pad, 24);
+  }
+  function text() {
+    var v = +sp.value, deg = +an.value, g = +wd.value, r = calc(v, deg, g);
+    $('#oSpeed').textContent = v + ' m/s'; $('#oAngle').textContent = deg + '°';
+    var msg = 'Range ' + r.R.toFixed(1) + ' m, peak height ' + r.H.toFixed(1) + ' m, time in air ' + r.T.toFixed(2) + ' s. ';
+    msg += deg === 45 ? 'At 45° the range is the longest for this speed (flat ground, no air).'
+                      : 'The dashed line is the 45° path, which goes farther on flat ground with no air.';
+    $('#demoRead').textContent = msg;
+    cv.setAttribute('aria-label', 'Path for ' + v + ' metres per second at ' + deg + ' degrees. ' + msg);
+  }
+  [sp, an, wd].forEach(function (el) { el.addEventListener('input', function () { text(); if (prefs.reduce) draw(performance.now()); }); });
+  text();
+  var raf, drewOnce = false;
+  (function loop(now) {
+    // only animate while the demo is on screen
+    var r = cv.getBoundingClientRect();
+    if (r.bottom > 0 && r.top < innerHeight) { if (!prefs.reduce || !drewOnce) { draw(now); drewOnce = prefs.reduce; } }
+    raf = requestAnimationFrame(loop);
+  })(performance.now());
+  window.addEventListener('resize', function () { drewOnce = false; });
+  void raf;
+})();
+
+/* ---------- F) ROCKET PATH + RENDERERS ---------- */
+/* The rocket's route is a smooth curve through these points (x and y from -1 to 1 across the screen). */
+var PATH = [[0.74,-0.62],[0.84,-0.08],[0.52,0.44],[-0.12,0.64],[-0.72,0.36],[-0.8,-0.26],[-0.3,-0.62],[0.5,-0.36],[0.82,0.28],[0.86,0.74]];
+function catmull(a, b, c, d, t) {           // Catmull-Rom spline between b and c
+  var t2 = t * t, t3 = t2 * t;
+  return 0.5 * ((2 * b) + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+}
+function pathAt(u) {
+  var n = PATH.length - 1, f = clamp(u, 0, 1) * n, i = Math.min(Math.floor(f), n - 1), t = f - i;
+  var p0 = PATH[Math.max(i - 1, 0)], p1 = PATH[i], p2 = PATH[i + 1], p3 = PATH[Math.min(i + 2, n)];
+  return [catmull(p0[0], p1[0], p2[0], p3[0], t), catmull(p0[1], p1[1], p2[1], p3[1], t)];
+}
+function scrollProgress() {
+  var max = Math.max(1, document.documentElement.scrollHeight - innerHeight);
+  return clamp(window.scrollY / max, 0, 1);
+}
+
+var mouse = { x: 0, y: 0, sx: 0, sy: 0 };           // pointer position (-1..1) and smoothed copy
+window.addEventListener('pointermove', function (e) { mouse.x = (e.clientX / innerWidth) * 2 - 1; mouse.y = (e.clientY / innerHeight) * 2 - 1; dirty = true; }, { passive: true });
+var dirty = true;
+window.addEventListener('scroll', function () { dirty = true; }, { passive: true });
+window.addEventListener('resize', function () { dirty = true; if (visuals) visuals.resize(); });
+
+var visuals = null;     // set below
+var GL = { ok: false, started: false };
+var G = {};             // Three.js objects
+
+function webglAvailable() {
+  try { var c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl') || c.getContext('experimental-webgl'))); }
+  catch (e) { return false; }
+}
+
+/* ---- Three.js scene: starfield, glowing 3D title, rocket, sky-blue trail ---- */
+function buildGL() {
+  var canvas = $('#bgGL');
+  G.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: !prefs.low, alpha: true, powerPreference: 'low-power' });
+  G.renderer.setClearColor(0x000000, 0);
+  G.scene = new THREE.Scene();
+  G.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
+  G.camera.position.z = 14;
+  G.scene.add(new THREE.AmbientLight(0x8fa8ff, 0.8));
+  var key = new THREE.DirectionalLight(0xffffff, 0.9); key.position.set(4, 6, 9); G.scene.add(key);
+  var rim = new THREE.PointLight(0x87ceeb, 1.4, 40); rim.position.set(-5, -2, 6); G.scene.add(rim);
+
+  // soft round sprite used for stars and the trail
+  var sc = document.createElement('canvas'); sc.width = sc.height = 64;
+  var sx = sc.getContext('2d'), gr = sx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(180,225,255,.65)'); gr.addColorStop(1, 'rgba(135,206,235,0)');
+  sx.fillStyle = gr; sx.fillRect(0, 0, 64, 64);
+  G.sprite = new THREE.CanvasTexture(sc);
+
+  // starfield
+  var N = 1600, pos = new Float32Array(N * 3);
+  for (var i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 90; pos[i * 3 + 1] = (Math.random() - 0.5) * 70; pos[i * 3 + 2] = -8 - Math.random() * 50; }
+  var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  G.stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: 0.55, map: G.sprite, color: 0xcfe9ff, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+  G.scene.add(G.stars);
+
+  // rocket (built from primitives). Local +Y is the nose direction.
+  var rk = new THREE.Group(), spin = new THREE.Group(); rk.add(spin);
+  var white = new THREE.MeshStandardMaterial({ color: 0xf2f8ff, metalness: 0.25, roughness: 0.35 });
+  var blue  = new THREE.MeshStandardMaterial({ color: 0x4169E1, metalness: 0.3, roughness: 0.4, emissive: 0x0b1a4d });
+  var sky   = new THREE.MeshStandardMaterial({ color: 0x87CEEB, emissive: 0x1d4f86, roughness: 0.3 });
+  var body = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 1.5, 28), white); spin.add(body);
+  var nose = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.75, 28), blue); nose.position.y = 1.125; spin.add(nose);
+  var band = new THREE.Mesh(new THREE.CylinderGeometry(0.352, 0.352, 0.16, 28), blue); band.position.y = -0.35; spin.add(band);
+  var win = new THREE.Mesh(new THREE.SphereGeometry(0.17, 20, 16), sky); win.position.set(0, 0.35, 0.3); win.scale.z = 0.5; spin.add(win);
+  var ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 10, 24), blue); ring.position.set(0, 0.35, 0.33); spin.add(ring);
+  for (var f = 0; f < 3; f++) {
+    var fin = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.62, 0.07), blue);
+    var holder = new THREE.Group(); holder.rotation.y = f * Math.PI * 2 / 3;
+    fin.position.set(0.42, -0.62, 0); fin.rotation.z = -0.5; holder.add(fin); spin.add(holder);
+  }
+  var nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.28, 0.22, 20), new THREE.MeshStandardMaterial({ color: 0x23306b, metalness: 0.6, roughness: 0.4 }));
+  nozzle.position.y = -0.86; spin.add(nozzle);
+  G.flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 18), new THREE.MeshBasicMaterial({ color: 0x9fe0ff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  G.flame.rotation.z = Math.PI; G.flame.position.y = -1.5; rk.add(G.flame);
+  G.rocket = rk; G.spin = spin; G.scene.add(rk);
+
+  // trail (additive glowing points that fade with age)
+  G.TN = 280;
+  var tp = new Float32Array(G.TN * 3), tc = new Float32Array(G.TN * 3);
+  var tg = new THREE.BufferGeometry();
+  tg.setAttribute('position', new THREE.BufferAttribute(tp, 3)); tg.setAttribute('color', new THREE.BufferAttribute(tc, 3));
+  G.trail = new THREE.Points(tg, new THREE.PointsMaterial({ size: 0.42, map: G.sprite, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
+  G.trail.frustumCulled = false; G.scene.add(G.trail);
+
+  buildTitle();
+  GL.ok = true;
+}
+
+/* Glowing 3D title: stacked layers of the same text (navy at the back, white in front) give real depth. */
+function buildTitle() {
+  if (G.title) { G.scene.remove(G.title); }
+  var TW = 2048, TH = 512, c = document.createElement('canvas'); c.width = TW; c.height = TH;
+  var x = c.getContext('2d');
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  var size = 330; x.font = '800 ' + size + 'px Sora, "Segoe UI", system-ui, sans-serif';
+  var w = x.measureText('NAVUMSHA').width + 8 * size * 0.06;       // allow for letter spacing
+  size = Math.floor(size * Math.min(1, (TW * 0.9) / w));
+  x.font = '800 ' + size + 'px Sora, "Segoe UI", system-ui, sans-serif';
+  if ('letterSpacing' in x) x.letterSpacing = Math.round(size * 0.06) + 'px';
+  x.fillStyle = '#fff'; x.fillText('NAVUMSHA', TW / 2, TH / 2 + size * 0.03);
+  var tex = new THREE.CanvasTexture(c); tex.anisotropy = 4;
+
+  // blurred copy for the soft glow
+  var g = document.createElement('canvas'); g.width = TW; g.height = TH; var gx = g.getContext('2d');
+  gx.filter = 'blur(26px)'; gx.drawImage(c, 0, 0); gx.filter = 'none';
+  var gtex = new THREE.CanvasTexture(g);
+
+  var grp = new THREE.Group(), LAYERS = 14, planeGeo = new THREE.PlaneGeometry(4, 1);
+  G.titleMats = [];
+  for (var i = 0; i < LAYERS; i++) {
+    var k = i / (LAYERS - 1);                                       // 0 = back, 1 = front
+    var col = new THREE.Color().lerpColors(new THREE.Color(0x07123a), new THREE.Color(0x4169E1), Math.min(1, k * 1.25));
+    if (k > 0.8) col.lerp(new THREE.Color(0xffffff), (k - 0.8) / 0.2);
+    var m = new THREE.MeshBasicMaterial({ map: tex, color: col, transparent: true, depthWrite: false });
+    var p = new THREE.Mesh(planeGeo, m); p.position.z = -0.42 + k * 0.42; p.renderOrder = 2 + i; grp.add(p); G.titleMats.push(m);
+  }
+  var gm = new THREE.MeshBasicMaterial({ map: gtex, color: 0x87ceeb, transparent: true, opacity: 0.85, depthWrite: false, blending: THREE.AdditiveBlending });
+  var gp = new THREE.Mesh(planeGeo, gm); gp.position.z = -0.5; gp.scale.set(1.06, 1.3, 1); gp.renderOrder = 1; grp.add(gp); G.titleMats.push(gm);
+  G.title = grp; G.titleGlow = gm; G.scene.add(grp);
+}
+
+function resizeGL() {
+  if (!GL.ok) return;
+  var w = innerWidth, h = innerHeight;
+  var cap = prefs.low ? 1 : (w < 800 ? 1.5 : 2);
+  G.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
+  G.renderer.setSize(w, h, false);
+  G.camera.aspect = w / h; G.camera.updateProjectionMatrix();
+  G.halfH = Math.tan(THREE.MathUtils.degToRad(G.camera.fov / 2)) * G.camera.position.z;
+  G.halfW = G.halfH * G.camera.aspect;
+  G.k = (2 * G.halfH) / h;                                          // world units per CSS pixel
+  var s = clamp(Math.min(w, h * 1.1) / 900, 0.5, 1);
+  G.rocket.scale.setScalar(s * 0.9);
+}
+
+var prog = 0, tNow = 0, lastT = 0, slowFrames = 0, frames = 0, startedAt = 0;
+
+function renderGL(dt, t) {
+  var target = prefs.reduce ? 0.1 : scrollProgress();
+  prog = prefs.reduce ? target : lerp(prog, target, 1 - Math.pow(0.0015, dt));
+  // starfield drift + parallax
+  G.stars.position.y = window.scrollY * G.k * 0.12;
+  if (!prefs.reduce) G.stars.rotation.z = t * 0.004;
+
+  // rocket position + heading
+  var a = pathAt(prog), b = pathAt(Math.min(1, prog + 0.004)), a0 = pathAt(Math.max(0, prog - 0.004));
+  var px = a[0] * G.halfW * 0.92, py = a[1] * G.halfH * 0.86;
+  G.rocket.position.set(px, py, 0);
+  var dx = (b[0] - a0[0]) * G.halfW, dy = (b[1] - a0[1]) * G.halfH;
+  var ang = (Math.abs(dx) + Math.abs(dy) < 1e-6) ? Math.PI / 4 : Math.atan2(dy, dx);
+  G.rocket.rotation.z = ang - Math.PI / 2;
+  if (!prefs.reduce) G.spin.rotation.y = t * 0.9;
+  var flick = prefs.reduce ? 1 : 0.85 + 0.25 * Math.sin(t * 31) + 0.1 * Math.sin(t * 17);
+  G.flame.scale.set(1, flick, 1);
+
+  // trail follows the path behind the rocket
+  var pa = G.trail.geometry.attributes.position, ca = G.trail.geometry.attributes.color;
+  for (var i = 0; i < G.TN; i++) {
+    var f = i / (G.TN - 1), q = pathAt(prog * f);
+    // offset the trail slightly behind the nozzle so it does not poke through the rocket
+    pa.setXYZ(i, q[0] * G.halfW * 0.92, q[1] * G.halfH * 0.86, -0.2);
+    var fade = prefs.reduce ? 0 : Math.pow(f, 2.2) * 0.95;
+    ca.setXYZ(i, 0.53 * fade, 0.81 * fade, 0.92 * fade);          // sky blue #87CEEB scaled by age
+  }
+  pa.needsUpdate = true; ca.needsUpdate = true;
+
+  // 3D title: sits where the HTML title sits, sways slowly, reacts to the pointer
+  var stage = $('#titleStage'), r = stage.getBoundingClientRect();
+  var cxp = r.left + r.width / 2, cyp = r.top + r.height / 2;
+  var tw = r.width * G.k;
+  G.title.scale.set(tw / 4, tw / 4, 1);                             // plane is 4 x 1, so scale = width / 4
+  G.title.position.set((cxp - innerWidth / 2) * G.k, -(cyp - innerHeight / 2) * G.k, 0);
+  mouse.sx = lerp(mouse.sx, mouse.x, 1 - Math.pow(0.01, dt)); mouse.sy = lerp(mouse.sy, mouse.y, 1 - Math.pow(0.01, dt));
+  var sway = prefs.reduce ? 0 : Math.sin(t * 0.35) * 0.28;
+  G.title.rotation.y = sway + mouse.sx * 0.45;
+  G.title.rotation.x = mouse.sy * 0.22;
+  var vis = clamp(1 - window.scrollY / (innerHeight * 0.75), 0, 1);
+  G.title.visible = vis > 0.01;
+  G.titleMats.forEach(function (m, i) { m.opacity = (i === G.titleMats.length - 1 ? 0.85 : 1) * vis; });
+  G.renderer.render(G.scene, G.camera);
+}
+
+/* ---- 2D fallback: starfield + glowing trail + simple rocket drawn on a canvas ---- */
+var F = { stars: [] };
+function build2D() {
+  F.cv = $('#bg2D'); F.cx = F.cv.getContext('2d');
+  F.stars = [];
+  for (var i = 0; i < 160; i++) F.stars.push({ x: Math.random(), y: Math.random(), r: Math.random() * 1.6 + 0.3, p: Math.random() * 6.28, d: Math.random() * 0.5 + 0.1 });
+}
+function resize2D() {
+  if (!F.cv) return;
+  var dpr = Math.min(window.devicePixelRatio || 1, prefs.low ? 1 : 2);
+  F.cv.width = Math.floor(innerWidth * dpr); F.cv.height = Math.floor(innerHeight * dpr);
+  F.dpr = dpr;
+}
+function render2D(dt, t) {
+  var cx = F.cx, W = F.cv.width, H = F.cv.height, d = F.dpr;
+  var target = prefs.reduce ? 0.1 : scrollProgress();
+  prog = prefs.reduce ? target : lerp(prog, target, 1 - Math.pow(0.0015, dt));
+  cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, W, H);
+  cx.setTransform(d, 0, 0, d, 0, 0);
+  var w = innerWidth, h = innerHeight;
+  cx.fillStyle = '#fff';
+  F.stars.forEach(function (s) {
+    var y = (s.y * h - window.scrollY * s.d * 0.15) % h; if (y < 0) y += h;
+    cx.globalAlpha = prefs.reduce ? 0.7 : 0.45 + 0.45 * Math.sin(t * 0.9 + s.p);
+    cx.beginPath(); cx.arc(s.x * w, y, s.r, 0, 6.3); cx.fill();
+  });
+  cx.globalAlpha = 1;
+  var X = function (u) { return w / 2 + u[0] * w / 2 * 0.92; }, Y = function (u) { return h / 2 - u[1] * h / 2 * 0.86; };
+  if (!prefs.reduce && prog > 0.003) {
+    cx.lineCap = 'round'; cx.lineJoin = 'round';
+    var steps = 120;
+    for (var pass = 0; pass < 2; pass++) {
+      for (var i = 1; i <= steps; i++) {
+        var f0 = (i - 1) / steps, f1 = i / steps, p0 = pathAt(prog * f0), p1 = pathAt(prog * f1);
+        cx.strokeStyle = 'rgba(135,206,235,' + (Math.pow(f1, 2) * (pass ? 0.9 : 0.25)) + ')';
+        cx.lineWidth = pass ? 3 : 9;
+        cx.beginPath(); cx.moveTo(X(p0), Y(p0)); cx.lineTo(X(p1), Y(p1)); cx.stroke();
+      }
+    }
+  }
+  // rocket
+  var a = pathAt(prog), b = pathAt(Math.min(1, prog + 0.004)), a0 = pathAt(Math.max(0, prog - 0.004));
+  var dx = (b[0] - a0[0]) * w / 2, dy = -(b[1] - a0[1]) * h / 2;     // screen y points down
+  var ang = Math.atan2(dy, dx);
+  var s = clamp(Math.min(w, h * 1.1) / 900, 0.55, 1) * 34;
+  cx.save(); cx.translate(X(a), Y(a)); cx.rotate(ang + Math.PI / 2);   // rocket drawn nose-up
+  var fl = prefs.reduce ? 1 : 0.8 + 0.3 * Math.sin(t * 30);
+  cx.fillStyle = '#9fe0ff'; cx.beginPath(); cx.moveTo(-s * 0.2, s * 0.9); cx.lineTo(0, s * (0.9 + 1.1 * fl)); cx.lineTo(s * 0.2, s * 0.9); cx.fill();
+  cx.fillStyle = '#4169E1'; cx.beginPath(); cx.moveTo(-s * 0.32, s * 0.5); cx.lineTo(-s * 0.7, s * 1.0); cx.lineTo(-s * 0.3, s * 0.85); cx.fill();
+  cx.beginPath(); cx.moveTo(s * 0.32, s * 0.5); cx.lineTo(s * 0.7, s * 1.0); cx.lineTo(s * 0.3, s * 0.85); cx.fill();
+  cx.fillStyle = '#f2f8ff'; cx.beginPath(); cx.moveTo(0, -s * 1.05); cx.quadraticCurveTo(s * 0.55, -s * 0.4, s * 0.34, s * 0.9); cx.lineTo(-s * 0.34, s * 0.9); cx.quadraticCurveTo(-s * 0.55, -s * 0.4, 0, -s * 1.05); cx.fill();
+  cx.fillStyle = '#4169E1'; cx.beginPath(); cx.moveTo(0, -s * 1.05); cx.quadraticCurveTo(s * 0.3, -s * 0.75, s * 0.3, -s * 0.5); cx.lineTo(-s * 0.3, -s * 0.5); cx.quadraticCurveTo(-s * 0.3, -s * 0.75, 0, -s * 1.05); cx.fill();
+  cx.fillStyle = '#87CEEB'; cx.beginPath(); cx.arc(0, -s * 0.1, s * 0.2, 0, 6.3); cx.fill();
+  cx.restore();
+  // CSS 3D title tilt (fallback for the Three.js title)
+  mouse.sx = lerp(mouse.sx, mouse.x, 1 - Math.pow(0.01, dt)); mouse.sy = lerp(mouse.sy, mouse.y, 1 - Math.pow(0.01, dt));
+  var sway = prefs.reduce ? 0 : Math.sin(t * 0.35) * 14;
+  var t3 = $('#title3d');
+  t3.style.setProperty('--ry', (sway + mouse.sx * 18).toFixed(2) + 'deg');
+  t3.style.setProperty('--rx', (-mouse.sy * 10).toFixed(2) + 'deg');
+}
+
+/* ---- controller: chooses 3D or 2D and runs one animation loop ---- */
+var raf = 0;
+visuals = {
+  mode: 'none',
+  refresh: function () {
+    var wantGL = !prefs.low && !!window.THREE && webglAvailable();
+    if (wantGL && !GL.ok) { try { buildGL(); } catch (e) { GL.ok = false; wantGL = false; } }
+    if (wantGL && GL.ok) { visuals.mode = 'gl'; }
+    else { visuals.mode = '2d'; if (!F.cv) build2D(); }
+    root.classList.toggle('gl-on', visuals.mode === 'gl');
+    root.classList.toggle('fallback-on', visuals.mode === '2d');
+    visuals.resize(); dirty = true;
+    if (!raf) { lastT = performance.now(); raf = requestAnimationFrame(visuals.loop); }
+  },
+  resize: function () { if (visuals.mode === 'gl') resizeGL(); else resize2D(); },
+  loop: function (now) {
+    raf = requestAnimationFrame(visuals.loop);
+    var dt = Math.min(0.1, (now - lastT) / 1000 || 0.016); lastT = now; tNow += dt;
+    if (document.hidden) return;
+    // slow-device detector: if the 3D scene runs below ~20 fps in its first seconds, switch to Low power
+    if (visuals.mode === 'gl' && !prefs.reduce) {
+      frames++; if (dt > 0.05) slowFrames++;
+      if (frames === 150) { if (slowFrames > 90) { prefs.low = true; store.set('nv_low', '1'); applyPrefs(); } }
+    }
+    if (prefs.reduce && !dirty) return;          // Reduce motion: draw only when something changes
+    dirty = false;
+    if (visuals.mode === 'gl') renderGL(dt, tNow); else render2D(dt, tNow);
+  }
+};
+document.addEventListener('visibilitychange', function () { lastT = performance.now(); });
+
+/* ---------- G) ROCKET-LAUNCH TRANSITION to lab.html ---------- */
+var launching = false;
+$$('[data-launch]').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;   // let "open in new tab" work
+    if (prefs.reduce || launching) return;                                  // plain link, no animation
+    e.preventDefault(); launching = true;
+    var fx = $('#launchFx'); fx.classList.add('go');
+    var href = a.getAttribute('href');
+    setTimeout(function () { window.location.href = href; }, 950);
+  });
+});
+// if the user comes back with the Back button, clear the overlay
+window.addEventListener('pageshow', function (e) { if (e.persisted) { launching = false; $('#launchFx').classList.remove('go'); } });
+
+/* ---------- start ---------- */
+applyPrefs();           // also calls visuals.refresh()
+setupQuotes();
+// Libraries load with "defer"; DOMContentLoaded fires after them, so THREE / gsap are ready here.
+// If the Google font arrives late, rebuild the 3D title so it uses the right font.
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (GL.ok) { try { buildTitle(); } catch (e) {} } dirty = true; });
+});
+</script>
+</body>
+</html>
